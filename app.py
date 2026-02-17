@@ -9,20 +9,46 @@ from firebase_admin import credentials, firestore
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Try Out TKA SD Online", page_icon="📝", layout="wide")
 
-# --- CSS CUSTOM (TAMPILAN BERSIH & RAHASIA) ---
+# --- CSS CUSTOM (MODE "JUBAH GAIB" - SEMBUNYIKAN SEMUA MENU) ---
 st.markdown("""
 <style>
-    /* 1. Sembunyikan Tombol Deploy & Menu GitHub */
-    .stAppDeployButton {display: none;}
-    [data-testid="stToolbar"] {visibility: hidden !important;}
-    
-    /* 2. Sembunyikan Footer 'Made with Streamlit' */
-    footer {visibility: hidden !important;}
-    
-    /* 3. Sembunyikan Garis Warna-warni di Atas */
-    header {visibility: hidden !important;}
+    /* 1. HILANGKAN Header Atas (Garis warna-warni & tombol Deploy) */
+    header[data-testid="stHeader"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
 
-    /* Style lainnya tetap sama */
+    /* 2. HILANGKAN Footer Bawah (Tulisan 'Made with Streamlit') */
+    footer {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* 3. HILANGKAN Menu Hamburger (Garis Tiga di Pojok Kanan Atas) */
+    #MainMenu {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* 4. HILANGKAN Tombol Toolbar (Yang biasa ada di pojok kanan) */
+    [data-testid="stToolbar"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    /* 5. HILANGKAN Status Widget (Tombol Profil/Manage App) */
+    div[data-testid="stStatusWidget"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    /* 6. HILANGKAN Tombol Deploy Khusus */
+    .stAppDeployButton {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* --- STYLE TAMPILAN APLIKASI (Tetap Bagus) --- */
     [data-testid="stAppViewContainer"] { background-color: #f8f9fa; color: #000000; }
     [data-testid="stSidebar"] { background-color: #e3f2fd; }
     .stButton>button { color: white !important; background: linear-gradient(to right, #1565c0, #42a5f5); border: none; font-weight: bold; }
