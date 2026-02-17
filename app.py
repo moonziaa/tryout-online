@@ -499,4 +499,177 @@ def exam_interface():
     # 1. HEADER UJIAN (Sticky)
     # Hitung sisa waktu server-side
     now_ts = datetime.now().timestamp()
-    r
+    remaining_seconds = data['end_time'] - now_ts
+    
+    if remaining_seconds <= 0:
+        st.warning("Waktu Habis!")
+        finish_exam()
+        return
+
+    rem_min = int(remaining_seconds // 60)
+    rem_sec = int(remaining_seconds % 60)
+    
+    # Tombol Font
+    font_cols = st.columns([6, 2, 2])
+    with font_cols[0]:
+        st.markdown(f"**{data['mapel']} - {data['paket']}** | {st.session_state['username']}")
+    with font_cols[1]:
+        # Timer Display
+        st.markdown(f"<div style='background:#dbeafe; color:#1e40af; padding:5px; border-radius:5px; text-align:center; font-weight:bold;'>⏱️ {rem_min:02d}:{rem_sec:02d}</div>", unsafe_allow_html=True)
+    with font_cols[2]:
+        c_s, c_m, c_l = st.columns(3)
+        if c_s.button("A-"): st.session_state['font_size'] = '14px'; st.rerun()
+        if c_m.button("A"): st.session_state['font_size'] = '18px'; st.rerun()
+        if c_l.button("A+"): st.session_state['font_size'] = '24px'; st.rerun()
+
+    st.divider()
+
+    # 2. AREA UTAMA (Layout Kiri: Soal, Kanan: Navigasi)
+    col_soal, col_nav = st.columns([3, 1])
+    
+    # --- RENDER SOAL ---
+    with col_soal:
+        q_id = q_order[curr_idx]
+        
+        # Ambil detail soal (Fetch real-time agar selalu fresh)
+        q_doc = db.collection('questions').document(q_id).get()
+        if not q_doc.exists:
+            st.error("Soal error/terhapus.")
+        else:
+            q_content = q_doc.to_dict()
+            opsi = json.loads(q_content['opsi'])
+            
+            # Container Soal
+            st.markdown(f"<div class='soal-container'><b>Soal No. {curr_idx + 1}</b><br><br>{q_content['pertanyaan']}</div>", unsafe_allow_html=True)
+            st.write("") # Spacer
+            
+            # Input Jawaban
+            tipe = q_content['tipe']
+            saved_ans = st.session_state['answers'].get(q_id)
+            
+            if tipe == 'single':
+                # Radio button
+                selected = st.radio("Pilih Jawaban:", opsi, key=f"ans_{q_id}", index=opsi.index(saved_ans) if saved_ans in opsi else None)
+                if selected: st.session_state['answers'][q_id] = selected
+                
+            elif tipe == 'complex':
+                # Multiselect / Checkbox
+                st.write("Pilih jawaban (bisa lebih dari satu):")
+                current_selections = saved_ans if isinstance(saved_ans, list) else []
+                new_selections = []
+                for op in opsi:
+                    checked = st.checkbox(op, value=(op in current_selections), key=f"chk_{q_id}_{op}")
+                    if checked: new_selections.append(op)
+                st.session_state['answers'][q_id] = new_selections
+                
+            elif tipe == 'category':
+                # Benar Salah Table
+                st.write("Tentukan Benar/Salah:")
+                current_dict = saved_ans if isinstance(saved_ans, dict) else {}
+                new_dict = {}
+                for stmt in opsi:
+                    c1, c2 = st.columns([3, 1])
+                    c1.write(stmt)
+                    val = c2.radio(f"Opsi {stmt}", ["Benar", "Salah"], key=f"rad_{q_id}_{stmt}", horizontal=True, label_visibility="collapsed", index=0 if current_dict.get(stmt) == "Benar" else 1 if current_dict.get(stmt) == "Salah" else None)
+                    if val: new_dict[stmt] = val
+                st.session_state['answers'][q_id] = new_dict
+
+    # --- NAVIGASI KANAN ---
+    with col_nav:
+        st.markdown("**Navigasi Soal**")
+        
+        # Grid Button Generator
+        cols = st.columns(5) # 5 kolom per baris
+        for i, qid in enumerate(q_order):
+            status_class = ""
+            # Cek status
+            if qid in st.session_state['answers'] and st.session_state['answers'][qid]:
+                status_class = "status-done"
+            if qid in st.session_state['ragu'] and qid in st.session_state['answers']: # Ragu tapi sudah jawab
+                status_class = "status-ragu"
+            if i == curr_idx:
+                status_class += " status-current"
+            
+            # Tombol Grid (Menggunakan button native streamlit dengan key unik)
+            if cols[i % 5].button(f"{i+1}", key=f"nav_{i}", help="Klik untuk lompat"):
+                st.session_state['current_idx'] = i
+                save_answer_realtime() # Save dulu sebelum pindah
+                st.rerun()
+                
+        st.markdown("---")
+        # Tombol Aksi Bawah
+        
+        # Tombol Ragu-Ragu
+        is_ragu = q_id in st.session_state['ragu']
+        if st.button(f"{'🟨 Batal Ragu' if is_ragu else '🟨 Ragu-Ragu'}", use_container_width=True):
+            if is_ragu: st.session_state['ragu'].remove(q_id)
+            else: st.session_state['ragu'].append(q_id)
+            save_answer_realtime()
+            st.rerun()
+
+        # Navigasi Bawah (Prev - Next)
+        col_p, col_n = st.columns(2)
+        
+        if curr_idx > 0:
+            if col_p.button("⬅️ Sebelumnya", use_container_width=True):
+                st.session_state['current_idx'] -= 1
+                save_answer_realtime()
+                st.rerun()
+        
+        if curr_idx < total_q - 1:
+            if col_n.button("Selanjutnya ➡️", use_container_width=True):
+                st.session_state['current_idx'] += 1
+                save_answer_realtime()
+                st.rerun()
+        else:
+            # Tombol Selesai di soal terakhir
+            if col_n.button("✅ SELESAI", type="primary", use_container_width=True):
+                finish_exam()
+
+def finish_exam():
+    save_answer_realtime()
+    score, details = calculate_score_and_finish()
+    st.session_state['exam_mode'] = False
+    st.session_state['result_mode'] = True
+    st.session_state['last_score'] = score
+    st.session_state['last_details'] = details
+    st.rerun()
+
+def result_interface():
+    score = st.session_state['last_score']
+    details = st.session_state['last_details']
+    
+    st.balloons()
+    st.markdown(f"""
+    <div style='text-align:center; padding: 40px; background: white; border-radius: 10px;'>
+        <h1>🎉 Ujian Selesai!</h1>
+        <h2 style='color: #1e3a8a; font-size: 60px;'>{score:.1f}</h2>
+        <p>Nilai kamu sudah tersimpan.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.divider()
+    
+    if st.button("Kembali ke Beranda"):
+        st.session_state['result_mode'] = False
+        st.session_state.pop('exam_data', None)
+        st.rerun()
+        
+    with st.expander("Lihat Pembahasan Lengkap"):
+        for d in details:
+            status = "✅ Benar" if d['is_correct'] else "❌ Salah"
+            color = "green" if d['is_correct'] else "red"
+            st.markdown(f"**No. {details.index(d)+1}** - :{color}[{status}]")
+            st.write(d['pertanyaan'])
+            st.caption(f"Jawaban Kamu: {d['user_ans']}")
+            st.caption(f"Kunci Jawaban: {d['key']}")
+            st.divider()
+
+# --- MAIN LOOP ---
+if not st.session_state.get('logged_in'):
+    login_page()
+else:
+    if st.session_state['role'] == 'admin':
+        admin_page()
+    else:
+        student_dashboard()
