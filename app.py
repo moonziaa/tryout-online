@@ -9,9 +9,20 @@ from firebase_admin import credentials, firestore
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Try Out TKA SD Online", page_icon="📝", layout="wide")
 
-# --- CSS CUSTOM ---
+# --- CSS CUSTOM (TAMPILAN BERSIH & RAHASIA) ---
 st.markdown("""
 <style>
+    /* 1. Sembunyikan Tombol Deploy & Menu GitHub */
+    .stAppDeployButton {display: none;}
+    [data-testid="stToolbar"] {visibility: hidden !important;}
+    
+    /* 2. Sembunyikan Footer 'Made with Streamlit' */
+    footer {visibility: hidden !important;}
+    
+    /* 3. Sembunyikan Garis Warna-warni di Atas */
+    header {visibility: hidden !important;}
+
+    /* Style lainnya tetap sama */
     [data-testid="stAppViewContainer"] { background-color: #f8f9fa; color: #000000; }
     [data-testid="stSidebar"] { background-color: #e3f2fd; }
     .stButton>button { color: white !important; background: linear-gradient(to right, #1565c0, #42a5f5); border: none; font-weight: bold; }
@@ -152,14 +163,13 @@ def admin_page():
                     db.collection('questions').add(data_soal)
                     st.success("Soal berhasil disimpan!")
 
-    # 3. UPLOAD CSV PINTAR (SUPPORT KOMA & TITIK KOMA)
+    # 3. UPLOAD CSV PINTAR
     with tab3:
         st.write("Upload massal dengan Template Mudah")
         st.info("Tips: File boleh pakai pemisah koma (,) atau titik koma (;). Sistem akan otomatis mendeteksi.")
         up = st.file_uploader("File CSV", type=['csv'])
         if up and st.button("Proses Upload"):
             try:
-                # TRIK PINTAR: Coba baca pakai koma dulu, kalau gagal (jadi 1 kolom), coba titik koma
                 try:
                     df = pd.read_csv(up)
                     if len(df.columns) < 2:
