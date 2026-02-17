@@ -9,32 +9,26 @@ from firebase_admin import credentials, firestore
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Try Out TKA SD Online", page_icon="📝", layout="wide")
 
-# --- CSS CUSTOM (JURUS PAMUNGKAS - ANTI TOMBOL) ---
-st.markdown("""
+# --- CSS CUSTOM (Update: Digabungkan dengan kode yang Ibu cari) ---
+# Kode ini ditaruh SETELAH set_page_config dan SEBELUM fungsi lainnya
+hide_streamlit_styles = """
 <style>
-    /* 1. HILANGKAN SELURUH HEADER ATAS (Garis, Tombol, Profil) */
-    header {
-        visibility: hidden !important;
-        height: 0px !important;
-        background: transparent !important;
-    }
+    /* 1. KODE YANG IBU CARI (Untuk menyembunyikan Footer & Header) */
+    header {visibility: hidden !important; height: 0px !important;}
+    footer {visibility: hidden !important; display: none !important;}
     
-    /* 2. HILANGKAN TOMBOL-TOMBOL SPESIFIK */
+    /* 2. JURUS PAMUNGKAS (Tambahan biar tombol Deploy & Menu juga hilang) */
     .stAppDeployButton { display: none !important; }
     [data-testid="stHeader"] { display: none !important; }
     [data-testid="stToolbar"] { display: none !important; }
     [data-testid="stStatusWidget"] { display: none !important; }
-    [data-testid="baseButton-header"] { display: none !important; }
+    #MainMenu { display: none !important; }
     
-    /* 3. GESER KONTEN KE ATAS (Supaya tidak ada ruang kosong bekas header) */
+    /* 3. Geser konten ke atas (supaya tidak ompong) */
     .block-container {
         padding-top: 1rem !important;
-        margin-top: -3rem !important; /* Tarik paksa ke atas */
+        margin-top: -3rem !important;
     }
-
-    /* 4. HILANGKAN FOOTER */
-    footer { display: none !important; visibility: hidden !important; }
-    #MainMenu { display: none !important; }
 
     /* --- STYLE TAMPILAN APLIKASI --- */
     [data-testid="stAppViewContainer"] { background-color: #f8f9fa; color: #000000; }
@@ -44,7 +38,9 @@ st.markdown("""
     .correct { color: green; font-weight: bold; }
     .wrong { color: red; font-weight: bold; }
 </style>
-""", unsafe_allow_html=True)
+"""
+# Jalankan kode CSS di atas
+st.markdown(hide_streamlit_styles, unsafe_allow_html=True)
 
 # --- KONEKSI FIREBASE ---
 @st.cache_resource
