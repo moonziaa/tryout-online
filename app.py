@@ -9,28 +9,11 @@ from firebase_admin import credentials, firestore
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Try Out TKA SD Online", page_icon="📝", layout="wide")
 
-# --- CSS CUSTOM (Update: Digabungkan dengan kode yang Ibu cari) ---
-# Kode ini ditaruh SETELAH set_page_config dan SEBELUM fungsi lainnya
-hide_streamlit_styles = """
+# --- CSS CUSTOM (TAMPILAN APLIKASI) ---
+# Header, Footer, dan Menu dibiarkan muncul (Default Streamlit)
+st.markdown("""
 <style>
-    /* 1. KODE YANG IBU CARI (Untuk menyembunyikan Footer & Header) */
-    header {visibility: hidden !important; height: 0px !important;}
-    footer {visibility: hidden !important; display: none !important;}
-    
-    /* 2. JURUS PAMUNGKAS (Tambahan biar tombol Deploy & Menu juga hilang) */
-    .stAppDeployButton { display: none !important; }
-    [data-testid="stHeader"] { display: none !important; }
-    [data-testid="stToolbar"] { display: none !important; }
-    [data-testid="stStatusWidget"] { display: none !important; }
-    #MainMenu { display: none !important; }
-    
-    /* 3. Geser konten ke atas (supaya tidak ompong) */
-    .block-container {
-        padding-top: 1rem !important;
-        margin-top: -3rem !important;
-    }
-
-    /* --- STYLE TAMPILAN APLIKASI --- */
+    /* --- STYLE WARNA & TAMPILAN --- */
     [data-testid="stAppViewContainer"] { background-color: #f8f9fa; color: #000000; }
     [data-testid="stSidebar"] { background-color: #e3f2fd; }
     .stButton>button { color: white !important; background: linear-gradient(to right, #1565c0, #42a5f5); border: none; font-weight: bold; }
@@ -38,9 +21,7 @@ hide_streamlit_styles = """
     .correct { color: green; font-weight: bold; }
     .wrong { color: red; font-weight: bold; }
 </style>
-"""
-# Jalankan kode CSS di atas
-st.markdown(hide_streamlit_styles, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # --- KONEKSI FIREBASE ---
 @st.cache_resource
