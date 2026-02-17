@@ -1,0 +1,5 @@
+mapel;topik;tipe;pertanyaan;pilihan_a;pilihan_b;pilihan_c;pilihan_d;jawaban_benar
+Matematika;Bilangan;PG;1 + 1 adalah...;1;2;3;4;2
+Matematika;Geometri;Checkbox;Yang termasuk bangun datar (Pilih 2);Kubus;Persegi;Bola;Segitiga;Persegi,Segitiga
+Bahasa Indonesia;Puisi;PG;Siapa penulis puisi 'Aku'?;Chairil Anwar;WS Rendra;Taufik Ismail;Sapardi Djoko;Chairil Anwar
+Bahasa Indonesia;Ejaan;BenarSalah;Tentukan Benar/Salah ejaan ini;Apotek (Benar);Nopember (Salah);-;;Benar, Salah
