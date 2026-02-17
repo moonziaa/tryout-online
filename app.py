@@ -9,46 +9,34 @@ from firebase_admin import credentials, firestore
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Try Out TKA SD Online", page_icon="📝", layout="wide")
 
-# --- CSS CUSTOM (MODE "JUBAH GAIB" - SEMBUNYIKAN SEMUA MENU) ---
+# --- CSS CUSTOM (JURUS PAMUNGKAS - ANTI TOMBOL) ---
 st.markdown("""
 <style>
-    /* 1. HILANGKAN Header Atas (Garis warna-warni & tombol Deploy) */
-    header[data-testid="stHeader"] {
-        display: none !important;
+    /* 1. HILANGKAN SELURUH HEADER ATAS (Garis, Tombol, Profil) */
+    header {
         visibility: hidden !important;
-    }
-
-    /* 2. HILANGKAN Footer Bawah (Tulisan 'Made with Streamlit') */
-    footer {
-        display: none !important;
-        visibility: hidden !important;
-    }
-
-    /* 3. HILANGKAN Menu Hamburger (Garis Tiga di Pojok Kanan Atas) */
-    #MainMenu {
-        display: none !important;
-        visibility: hidden !important;
-    }
-
-    /* 4. HILANGKAN Tombol Toolbar (Yang biasa ada di pojok kanan) */
-    [data-testid="stToolbar"] {
-        display: none !important;
-        visibility: hidden !important;
+        height: 0px !important;
+        background: transparent !important;
     }
     
-    /* 5. HILANGKAN Status Widget (Tombol Profil/Manage App) */
-    div[data-testid="stStatusWidget"] {
-        display: none !important;
-        visibility: hidden !important;
-    }
+    /* 2. HILANGKAN TOMBOL-TOMBOL SPESIFIK */
+    .stAppDeployButton { display: none !important; }
+    [data-testid="stHeader"] { display: none !important; }
+    [data-testid="stToolbar"] { display: none !important; }
+    [data-testid="stStatusWidget"] { display: none !important; }
+    [data-testid="baseButton-header"] { display: none !important; }
     
-    /* 6. HILANGKAN Tombol Deploy Khusus */
-    .stAppDeployButton {
-        display: none !important;
-        visibility: hidden !important;
+    /* 3. GESER KONTEN KE ATAS (Supaya tidak ada ruang kosong bekas header) */
+    .block-container {
+        padding-top: 1rem !important;
+        margin-top: -3rem !important; /* Tarik paksa ke atas */
     }
 
-    /* --- STYLE TAMPILAN APLIKASI (Tetap Bagus) --- */
+    /* 4. HILANGKAN FOOTER */
+    footer { display: none !important; visibility: hidden !important; }
+    #MainMenu { display: none !important; }
+
+    /* --- STYLE TAMPILAN APLIKASI --- */
     [data-testid="stAppViewContainer"] { background-color: #f8f9fa; color: #000000; }
     [data-testid="stSidebar"] { background-color: #e3f2fd; }
     .stButton>button { color: white !important; background: linear-gradient(to right, #1565c0, #42a5f5); border: none; font-weight: bold; }
