@@ -2,28 +2,71 @@ import streamlit as st
 import pandas as pd
 import time
 import json
-from datetime import datetime
+import random
+from datetime import datetime, timedelta
 import firebase_admin
 from firebase_admin import credentials, firestore
+import altair as alt
 
-# --- KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="Try Out TKA SD Online", page_icon="📝", layout="wide")
+# --- 1. KONFIGURASI & CSS ---
+st.set_page_config(page_title="CAT TKA SD", page_icon="🎓", layout="wide", initial_sidebar_state="collapsed")
 
-# --- CSS CUSTOM (TAMPILAN APLIKASI) ---
-# Header, Footer, dan Menu dibiarkan muncul (Default Streamlit)
-st.markdown("""
+# Inisialisasi Session State untuk Font Size
+if 'font_size' not in st.session_state: st.session_state['font_size'] = '18px'
+
+# CSS Custom ala PUSMENDIK/ANBK
+st.markdown(f"""
 <style>
-    /* --- STYLE WARNA & TAMPILAN --- */
-    [data-testid="stAppViewContainer"] { background-color: #f8f9fa; color: #000000; }
-    [data-testid="stSidebar"] { background-color: #e3f2fd; }
-    .stButton>button { color: white !important; background: linear-gradient(to right, #1565c0, #42a5f5); border: none; font-weight: bold; }
-    .timer-box { font-size: 24px; font-weight: bold; color: #d32f2f !important; text-align: center; border: 2px solid #d32f2f; padding: 10px; border-radius: 10px; background-color: #ffebee; }
-    .correct { color: green; font-weight: bold; }
-    .wrong { color: red; font-weight: bold; }
+    /* Reset & Base */
+    [data-testid="stAppViewContainer"] {{ background-color: #f0f3f5; color: #333; }}
+    [data-testid="stHeader"] {{ display: none; }} /* Sembunyikan header bawaan */
+    
+    /* Header Custom */
+    .custom-header {{
+        background: linear-gradient(90deg, #1e3a8a, #3b82f6);
+        padding: 15px 20px;
+        color: white;
+        border-radius: 0 0 15px 15px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        display: flex; justify-content: space-between; align-items: center;
+    }}
+    
+    /* Soal Container */
+    .soal-container {{
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        font-size: {st.session_state['font_size']};
+        line-height: 1.6;
+        min-height: 400px;
+    }}
+    
+    /* Tombol Navigasi Bawah */
+    .nav-btn {{ width: 100%; font-weight: bold; border-radius: 5px; }}
+    
+    /* Nomor Soal Grid */
+    .grid-container {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }}
+    .grid-item {{
+        padding: 10px; text-align: center; border: 1px solid #ccc; border-radius: 5px;
+        cursor: pointer; font-weight: bold; font-size: 14px;
+    }}
+    .status-done {{ background-color: #4ade80; color: white; border: 1px solid #22c55e; }} /* Hijau */
+    .status-ragu {{ background-color: #facc15; color: black; border: 1px solid #eab308; }} /* Kuning */
+    .status-current {{ border: 2px solid #2563eb; transform: scale(1.05); }} /* Biru Highlight */
+    
+    /* Tombol Ukuran Font */
+    .font-btn {{ padding: 2px 8px; border: 1px solid white; color: white; border-radius: 4px; cursor: pointer; margin-left: 5px; font-size: 12px; }}
+    .font-btn:hover {{ background-color: rgba(255,255,255,0.2); }}
+
+    /* Hide Default Streamlit Elements */
+    footer {{ visibility: hidden; }}
+    .stDeployButton {{ display: none; }}
 </style>
 """, unsafe_allow_html=True)
 
-# --- KONEKSI FIREBASE ---
+# --- 2. KONEKSI DATABASE ---
 @st.cache_resource
 def get_db():
     if not firebase_admin._apps:
@@ -35,285 +78,425 @@ def get_db():
 try:
     db = get_db()
 except:
-    st.error("Koneksi Database Gagal. Cek Secrets di Streamlit.")
+    st.error("Gagal koneksi database. Pastikan Secrets sudah diatur.")
     st.stop()
 
-# --- FUNGSI UTILITY ---
-def load_questions(mapel):
-    docs = db.collection('questions').where('mapel', '==', mapel).stream()
-    data = []
-    for doc in docs:
-        d = doc.to_dict()
-        d['id'] = doc.id
-        data.append(d)
-    if data: return pd.DataFrame(data).sample(frac=1).head(30)
-    return pd.DataFrame()
+# --- 3. FUNGSI LOGIC ---
 
-# --- HALAMAN LOGIN ---
-if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
+def get_session_id():
+    """Membuat ID unik untuk sesi ujian berdasarkan user dan paket"""
+    return f"{st.session_state['username']}_{st.session_state.get('selected_mapel','')}_{st.session_state.get('selected_paket','')}"
+
+def init_exam_session(mapel, paket):
+    """Memulai sesi ujian: Ambil soal, Acak, Simpan urutan ke DB"""
+    session_id = f"{st.session_state['username']}_{mapel}_{paket}"
+    
+    # Cek apakah sudah ada sesi berjalan di DB (Resume)
+    doc_ref = db.collection('exam_sessions').document(session_id)
+    doc = doc_ref.get()
+    
+    if doc.exists:
+        data = doc.to_dict()
+        if data.get('status') == 'ongoing':
+            st.session_state['exam_data'] = data
+            st.session_state['q_order'] = json.loads(data['q_order'])
+            st.session_state['answers'] = json.loads(data['answers'])
+            st.session_state['ragu'] = json.loads(data.get('ragu', '[]'))
+            return True
+        elif data.get('status') == 'completed':
+            return False # Sudah selesai
+
+    # Jika belum ada, buat sesi baru
+    # 1. Ambil soal dari DB
+    questions_ref = db.collection('questions').where('mapel', '==', mapel).where('paket', '==', paket).stream()
+    q_list = []
+    for q in questions_ref:
+        qd = q.to_dict()
+        qd['id'] = q.id
+        q_list.append(qd)
+    
+    if not q_list:
+        st.error("Soal tidak ditemukan untuk paket ini.")
+        return False
+
+    # 2. Randomize (Acak Soal)
+    random.shuffle(q_list)
+    q_order = [q['id'] for q in q_list] # Simpan ID saja biar ringan
+    
+    # 3. Simpan state awal ke DB
+    start_time = datetime.now().timestamp()
+    duration = 75 * 60 # 75 menit
+    end_time = start_time + duration
+    
+    session_data = {
+        'username': st.session_state['username'],
+        'mapel': mapel,
+        'paket': paket,
+        'start_time': start_time,
+        'end_time': end_time,
+        'q_order': json.dumps(q_order),
+        'answers': json.dumps({}),
+        'ragu': json.dumps([]),
+        'status': 'ongoing',
+        'score': 0
+    }
+    doc_ref.set(session_data)
+    
+    st.session_state['exam_data'] = session_data
+    st.session_state['q_order'] = q_order
+    st.session_state['answers'] = {}
+    st.session_state['ragu'] = []
+    return True
+
+def save_answer_realtime():
+    """Simpan jawaban ke DB setiap pindah soal (Auto-save)"""
+    session_id = get_session_id()
+    db.collection('exam_sessions').document(session_id).update({
+        'answers': json.dumps(st.session_state['answers']),
+        'ragu': json.dumps(st.session_state['ragu'])
+    })
+
+def calculate_score_and_finish():
+    """Hitung nilai, simpan ke riwayat, tutup sesi"""
+    session_id = get_session_id()
+    q_ids = st.session_state['q_order']
+    answers = st.session_state['answers']
+    
+    score = 0
+    total = len(q_ids)
+    details = []
+    
+    # Ambil data soal asli (batch fetch biar cepat) - Simplifikasi: fetch one by one atau cache
+    # Untuk akurasi, kita fetch ulang based on ID
+    for q_id in q_ids:
+        q_doc = db.collection('questions').document(q_id).get()
+        q_data = q_doc.to_dict()
+        
+        user_ans = answers.get(q_id)
+        try: real_key = json.loads(q_data['kunci_jawaban'])
+        except: real_key = q_data['kunci_jawaban']
+        
+        # Logika Penilaian
+        is_correct = False
+        tipe = q_data['tipe']
+        
+        if tipe == 'single':
+            if user_ans == real_key: is_correct = True
+        elif tipe == 'complex':
+            # Harus sama persis set-nya
+            if user_ans and set(user_ans) == set(real_key): is_correct = True
+        elif tipe == 'category':
+            if user_ans == real_key: is_correct = True
+            
+        if is_correct: score += 1
+        
+        details.append({
+            'q_id': q_id,
+            'pertanyaan': q_data['pertanyaan'],
+            'user_ans': user_ans,
+            'key': real_key,
+            'is_correct': is_correct,
+            'tipe': tipe
+        })
+        
+    final_score = (score / total) * 100
+    
+    # Update Session jadi Completed
+    db.collection('exam_sessions').document(session_id).update({
+        'status': 'completed',
+        'score': final_score,
+        'finished_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+    
+    # Simpan ke tabel Results (Riwayat Nilai Tertinggi logic bisa di handle di UI)
+    result_data = {
+        'username': st.session_state['username'],
+        'nama': st.session_state['nama'],
+        'mapel': st.session_state['exam_data']['mapel'],
+        'paket': st.session_state['exam_data']['paket'],
+        'skor': final_score,
+        'tanggal': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'details': json.dumps(details, default=str)
+    }
+    db.collection('results').add(result_data)
+    
+    return final_score, details
+
+# --- 4. HALAMAN-HALAMAN ---
 
 def login_page():
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        st.title("🎓 Login Try Out")
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
-        if st.button("Masuk"):
-            if u == "admin" and p == "admin123":
-                st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Guru Admin', 'username':'admin'})
-                st.rerun()
-            else:
-                users = db.collection('users').where('username','==',u).where('password','==',p).stream()
-                found = False
-                for user in users:
-                    d = user.to_dict()
-                    st.session_state.update({'logged_in':True, 'role':'siswa', 'nama':d['nama_lengkap'], 'username':d['username']})
-                    found = True; st.rerun()
-                if not found: st.error("Username/Password salah")
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        st.markdown("<h2 style='text-align: center; color: #1e3a8a;'>🎓 Login Try Out TKA</h2>", unsafe_allow_html=True)
+        with st.form("login_form"):
+            u = st.text_input("Username")
+            p = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Masuk", use_container_width=True)
+            
+            if submitted:
+                if u == "admin" and p == "admin123":
+                    st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Administrator', 'username':'admin'})
+                    st.rerun()
+                else:
+                    users = db.collection('users').where('username', '==', u).where('password', '==', p).stream()
+                    found = False
+                    for user in users:
+                        d = user.to_dict()
+                        st.session_state.update({'logged_in':True, 'role':'siswa', 'nama':d['nama_lengkap'], 'username':d['username']})
+                        found = True
+                        st.rerun()
+                    if not found: st.error("Username atau Password salah!")
 
-# --- DASHBOARD ADMIN ---
 def admin_page():
-    st.sidebar.button("Keluar", on_click=lambda: st.session_state.clear())
-    st.title("Halaman Guru (Admin)")
+    st.markdown("""
+    <div class='custom-header'>
+        <h3>🛠️ Dashboard Admin</h3>
+        <button style='background:none; border:1px solid white; color:white; padding:5px 10px; border-radius:5px;' 
+        onclick="window.location.reload()">Log Out</button>
+    </div>
+    """, unsafe_allow_html=True)
     
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Nilai", "✍️ Input Manual", "📂 Upload Excel/CSV", "👥 Siswa"])
-    
-    # 1. LIHAT NILAI
-    with tab1:
-        if st.button("Refresh Nilai"): st.rerun()
-        docs = db.collection('results').order_by('tanggal', direction=firestore.Query.DESCENDING).stream()
-        data = [d.to_dict() for d in docs]
-        if data:
-            df = pd.DataFrame(data)
-            st.dataframe(df[['tanggal', 'nama', 'mapel', 'skor']])
-            st.download_button("Download Excel", df.to_csv().encode('utf-8'), "nilai.csv")
-        else: st.info("Belum ada data.")
+    if st.button("Keluar"): st.session_state.clear(); st.rerun()
 
-    # 2. INPUT SOAL MANUAL
+    tab1, tab2, tab3 = st.tabs(["👥 Manajemen Siswa", "📝 Input Soal", "📊 Rekap Nilai"])
+    
+    # TAB 1: MANAJEMEN SISWA
+    with tab1:
+        st.subheader("Daftar Akun Siswa")
+        
+        # Load data siswa
+        users_ref = db.collection('users').where('role', '!=', 'admin').stream()
+        users_data = [{'id': u.id, **u.to_dict()} for u in users_ref]
+        
+        if users_data:
+            df_users = pd.DataFrame(users_data)
+            # Tampilkan sebagai Data Editor agar bisa diedit langsung
+            edited_df = st.data_editor(df_users[['username', 'password', 'nama_lengkap']], num_rows="dynamic", key="user_editor")
+            
+            if st.button("Simpan Perubahan Akun"):
+                # Logic sederhana: Loop dan update (kurang efisien untuk data besar, tapi oke untuk skala SD)
+                # Note: Data Editor Streamlit mengembalikan dataframe baru.
+                # Untuk implementasi CRUD full di data editor butuh logic diff.
+                # Sederhananya, kita pakai form tambah manual dan list view saja agar aman.
+                pass
+                
+            st.info("Untuk mengedit/menghapus, gunakan menu di bawah tabel ini (agar lebih aman).")
+            
+            # Tabel View
+            st.dataframe(df_users[['nama_lengkap', 'username', 'password']])
+            
+            c_edit, c_hapus = st.columns(2)
+            with c_edit:
+                st.write("Edit Password/Nama")
+                pilih_user = st.selectbox("Pilih Siswa", df_users['username'].tolist())
+                new_pass = st.text_input("Password Baru")
+                new_name = st.text_input("Nama Baru")
+                if st.button("Update Akun"):
+                    db.collection('users').document(pilih_user).update({'password': new_pass, 'nama_lengkap': new_name})
+                    st.success("Updated!")
+                    time.sleep(1); st.rerun()
+            
+            with c_hapus:
+                st.write("Hapus Akun (Hati-hati)")
+                hapus_user = st.selectbox("Hapus Siswa", df_users['username'].tolist(), key='del_user')
+                if st.button("Hapus Permanen"):
+                    db.collection('users').document(hapus_user).delete()
+                    st.warning("Terhapus.")
+                    time.sleep(1); st.rerun()
+
+        st.divider()
+        st.subheader("Tambah Siswa Baru")
+        with st.form("add_student"):
+            c1, c2, c3 = st.columns(3)
+            nu = c1.text_input("Username")
+            np = c2.text_input("Password")
+            nn = c3.text_input("Nama Lengkap")
+            if st.form_submit_button("Buat Akun"):
+                db.collection('users').document(nu).set({
+                    'username': nu, 'password': np, 'nama_lengkap': nn, 'role': 'siswa'
+                })
+                st.success(f"Siswa {nn} berhasil dibuat.")
+                st.rerun()
+
+    # TAB 2: INPUT SOAL (FIXED LOGIC)
     with tab2:
-        st.subheader("Tambah Soal Tanpa Ribet")
-        with st.form("input_manual"):
-            col_a, col_b = st.columns(2)
-            with col_a:
-                in_mapel = st.selectbox("Mata Pelajaran", ["Matematika", "Bahasa Indonesia"])
-                in_topik = st.text_input("Topik (misal: Pecahan/Puisi)")
-            with col_b:
-                in_tipe = st.selectbox("Tipe Soal", ["Pilihan Ganda (1 Jawaban)", "Pilihan Ganda Kompleks (>1 Jawaban)", "Benar/Salah"])
+        st.subheader("Bank Soal")
+        
+        with st.form("input_soal_fix"):
+            c1, c2, c3 = st.columns(3)
+            in_mapel = c1.selectbox("Mapel", ["Matematika", "Bahasa Indonesia"])
+            in_paket = c2.text_input("Paket Soal", value="Paket 1", help="Contoh: Paket A, Tryout 1")
+            in_tipe = c3.selectbox("Tipe Soal", ["Pilihan Ganda (PG)", "PG Kompleks (Checkbox)", "Benar/Salah"])
             
-            in_tanya = st.text_area("Pertanyaan")
+            in_tanya = st.text_area("Pertanyaan Soal")
             
-            # Logic Dinamis
             final_opsi = []
             final_kunci = None
             
-            st.markdown("---")
-            st.write("**Masukkan Pilihan Jawaban & Kunci:**")
+            st.markdown("**Opsi Jawaban & Kunci**")
             
-            if in_tipe == "Pilihan Ganda (1 Jawaban)":
-                o1 = st.text_input("Opsi A")
-                o2 = st.text_input("Opsi B")
-                o3 = st.text_input("Opsi C")
-                o4 = st.text_input("Opsi D")
-                kunci_pilih = st.radio("Mana Jawaban Benar?", ["A", "B", "C", "D"], horizontal=True)
-                final_opsi = [o1, o2, o3, o4]
-                mapping = {"A":0, "B":1, "C":2, "D":3}
-                if o1: final_kunci = final_opsi[mapping[kunci_pilih]]
-                real_tipe = 'single'
-
-            elif in_tipe == "Pilihan Ganda Kompleks (>1 Jawaban)":
-                o1 = st.text_input("Pilihan 1")
-                o2 = st.text_input("Pilihan 2")
-                o3 = st.text_input("Pilihan 3")
-                o4 = st.text_input("Pilihan 4")
-                st.write("Centang SEMUA yang benar:")
-                c1 = st.checkbox("Pilihan 1 Benar?")
-                c2 = st.checkbox("Pilihan 2 Benar?")
-                c3 = st.checkbox("Pilihan 3 Benar?")
-                c4 = st.checkbox("Pilihan 4 Benar?")
-                final_opsi = [o1, o2, o3, o4]
-                final_kunci = []
-                if c1: final_kunci.append(o1)
-                if c2: final_kunci.append(o2)
-                if c3: final_kunci.append(o3)
-                if c4: final_kunci.append(o4)
-                real_tipe = 'complex'
-
-            elif in_tipe == "Benar/Salah":
-                s1 = st.text_input("Pernyataan 1")
-                k1 = st.radio("Kunci Pernyataan 1", ["Benar", "Salah"], horizontal=True, key="k1")
-                s2 = st.text_input("Pernyataan 2")
-                k2 = st.radio("Kunci Pernyataan 2", ["Benar", "Salah"], horizontal=True, key="k2")
-                final_opsi = [s1, s2]
-                final_kunci = {s1: k1, s2: k2}
-                real_tipe = 'category'
-
-            if st.form_submit_button("Simpan Soal"):
-                if not in_tanya: st.error("Pertanyaan wajib diisi!")
-                else:
-                    data_soal = {"mapel": in_mapel, "topik": in_topik, "tipe": real_tipe, "pertanyaan": in_tanya, "opsi": json.dumps(final_opsi), "kunci_jawaban": json.dumps(final_kunci)}
-                    db.collection('questions').add(data_soal)
-                    st.success("Soal berhasil disimpan!")
-
-    # 3. UPLOAD CSV PINTAR
-    with tab3:
-        st.write("Upload massal dengan Template Mudah")
-        st.info("Tips: File boleh pakai pemisah koma (,) atau titik koma (;). Sistem akan otomatis mendeteksi.")
-        up = st.file_uploader("File CSV", type=['csv'])
-        if up and st.button("Proses Upload"):
-            try:
-                try:
-                    df = pd.read_csv(up)
-                    if len(df.columns) < 2:
-                        up.seek(0)
-                        df = pd.read_csv(up, sep=';')
-                except:
-                    up.seek(0)
-                    df = pd.read_csv(up, sep=';')
-
-                prog = st.progress(0)
-                count = 0
+            if in_tipe == "Pilihan Ganda (PG)":
+                o1 = st.text_input("A")
+                o2 = st.text_input("B")
+                o3 = st.text_input("C")
+                o4 = st.text_input("D")
+                kunci = st.radio("Kunci Jawaban", ["A", "B", "C", "D"], horizontal=True)
                 
-                for i, r in df.iterrows():
-                    if 'pilihan_a' in df.columns:
-                        try:
-                            raw_tipe = r.get('tipe', 'PG')
-                            real_tipe = 'single'
-                            if 'Check' in str(raw_tipe): real_tipe = 'complex'
-                            if 'Benar' in str(raw_tipe): real_tipe = 'category'
-                            
-                            opsi_list = [str(r['pilihan_a']), str(r['pilihan_b']), str(r['pilihan_c']), str(r['pilihan_d'])]
-                            opsi_list = [x for x in opsi_list if x != 'nan' and x != '']
-                            
-                            raw_kunci = str(r['jawaban_benar'])
-                            final_kunci = raw_kunci
-                            
-                            if real_tipe == 'complex':
-                                final_kunci = [x.strip() for x in raw_kunci.split(',')]
-                            elif real_tipe == 'category':
-                                kunci_split = [x.strip() for x in raw_kunci.split(',')]
-                                final_kunci = {}
-                                if len(opsi_list) >= 1 and len(kunci_split) >= 1: final_kunci[opsi_list[0]] = kunci_split[0]
-                                if len(opsi_list) >= 2 and len(kunci_split) >= 2: final_kunci[opsi_list[1]] = kunci_split[1]
+                final_opsi = [o1, o2, o3, o4]
+                map_k = {"A":0, "B":1, "C":2, "D":3}
+                if o1: final_kunci = final_opsi[map_k[kunci]]
+                tipe_db = 'single'
+                
+            elif in_tipe == "PG Kompleks (Checkbox)":
+                st.info("Isi opsi jawaban, lalu centang mana saja yang benar.")
+                col_opsi = st.columns(4)
+                checks = st.columns(4)
+                
+                temp_opsi = []
+                temp_kunci = []
+                
+                for i in range(4):
+                    val = col_opsi[i].text_input(f"Opsi {i+1}")
+                    is_true = checks[i].checkbox(f"Benar?", key=f"chk_{i}")
+                    temp_opsi.append(val)
+                    if is_true: temp_kunci.append(val)
+                
+                final_opsi = temp_opsi
+                final_kunci = temp_kunci # List jawaban benar
+                tipe_db = 'complex'
+                
+            elif in_tipe == "Benar/Salah":
+                st.info("Masukkan pernyataan, lalu tentukan kuncinya.")
+                p1 = st.text_input("Pernyataan 1")
+                k1 = st.radio("Kunci 1", ["Benar", "Salah"], horizontal=True, key="k1")
+                p2 = st.text_input("Pernyataan 2")
+                k2 = st.radio("Kunci 2", ["Benar", "Salah"], horizontal=True, key="k2")
+                
+                final_opsi = [p1, p2]
+                final_kunci = {p1: k1, p2: k2} # Dict
+                tipe_db = 'category'
+            
+            if st.form_submit_button("Simpan Soal"):
+                data = {
+                    'mapel': in_mapel,
+                    'paket': in_paket, # Support Multi Paket
+                    'tipe': tipe_db,
+                    'pertanyaan': in_tanya,
+                    'opsi': json.dumps(final_opsi),
+                    'kunci_jawaban': json.dumps(final_kunci),
+                    'created_at': datetime.now().strftime("%Y-%m-%d")
+                }
+                db.collection('questions').add(data)
+                st.success("Soal tersimpan!")
 
-                            doc_data = {
-                                "mapel": r['mapel'], "topik": r['topik'], "tipe": real_tipe,
-                                "pertanyaan": r['pertanyaan'],
-                                "opsi": json.dumps(opsi_list),
-                                "kunci_jawaban": json.dumps(final_kunci)
-                            }
-                            db.collection('questions').add(doc_data)
-                            count += 1
-                        except Exception as e:
-                            st.error(f"Gagal di baris {i+1}: {e}")
+    # TAB 3: REKAP
+    with tab3:
+        if st.button("Refresh Data"): st.rerun()
+        res_ref = db.collection('results').order_by('tanggal', direction=firestore.Query.DESCENDING).stream()
+        res_data = [r.to_dict() for r in res_ref]
+        
+        if res_data:
+            df_res = pd.DataFrame(res_data)
+            st.dataframe(df_res[['tanggal', 'nama', 'mapel', 'paket', 'skor']])
+            
+            # Grafik
+            chart = alt.Chart(df_res).mark_bar().encode(
+                x='nama',
+                y='skor',
+                color='mapel',
+                tooltip=['nama', 'skor', 'paket']
+            ).interactive()
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("Belum ada data ujian.")
 
-                    elif 'opsi' in df.columns:
-                        db.collection('questions').add(r.to_dict())
-                        count += 1
-                    
-                    prog.progress((i+1)/len(df))
-                st.success(f"Selesai! {count} soal berhasil masuk.")
-            except Exception as e:
-                st.error(f"File bermasalah: {e}")
-
-    # 4. SISWA
-    with tab4:
-        with st.form("tambah_siswa"):
-            u = st.text_input("Username"); p = st.text_input("Password"); n = st.text_input("Nama")
-            if st.form_submit_button("Simpan"):
-                db.collection('users').document(u).set({'username':u, 'password':p, 'nama_lengkap':n})
-                st.success("Tersimpan.")
-
-# --- DASHBOARD SISWA ---
-def student_page():
-    st.sidebar.write(f"👤 {st.session_state['nama']}")
-    st.sidebar.button("Keluar", on_click=lambda: st.session_state.clear())
+def student_dashboard():
+    # Header Siswa
+    st.markdown(f"""
+    <div class='custom-header'>
+        <div>
+            <h3>Halo, {st.session_state['nama']}</h3>
+            <p style='font-size:14px; margin:0;'>Semangat belajar!</p>
+        </div>
+        <div>
+            <button style='background:#ef4444; border:none; color:white; padding:8px 15px; border-radius:5px; cursor:pointer;' 
+            onclick="window.location.reload()">Keluar</button>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
-    if 'exam_running' not in st.session_state: st.session_state['exam_running'] = False
-    if 'exam_done' not in st.session_state: st.session_state['exam_done'] = False
+    if st.sidebar.button("Log Out"): st.session_state.clear(); st.rerun()
 
-    if st.session_state['exam_done']:
-        show_result_analysis()
-    elif st.session_state['exam_running']:
+    # Cek State Ujian
+    if 'exam_mode' in st.session_state and st.session_state['exam_mode']:
         exam_interface()
+    elif 'result_mode' in st.session_state and st.session_state['result_mode']:
+        result_interface()
     else:
-        st.header("Pilih Ujian")
-        c1, c2 = st.columns(2)
-        if c1.button("📐 Matematika"): start_exam("Matematika")
-        if c2.button("📖 Bahasa Indonesia"): start_exam("Bahasa Indonesia")
-
-def start_exam(mapel):
-    q = load_questions(mapel)
-    if q.empty: st.error("Soal belum ada."); return
-    st.session_state.update({'exam_running':True, 'exam_done':False, 'mapel':mapel, 'q_data':q, 'start':time.time(), 'ans':{}})
-    st.rerun()
+        # MENU UTAMA (Pilih Mapel & Paket)
+        st.subheader("📚 Pilih Ujian")
+        
+        # Ambil paket yang tersedia dari DB (Unique Paket)
+        # Note: Ini agak berat query-nya kalau data besar, idealnya ada koleksi 'pakets' terpisah.
+        # Kita pakai pendekatan: User pilih Mapel dulu.
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.info("📐 Matematika")
+            if st.button("Lihat Paket Matematika"):
+                st.session_state['selected_mapel'] = 'Matematika'
+        with col2:
+            st.info("📖 Bahasa Indonesia")
+            if st.button("Lihat Paket B. Indonesia"):
+                st.session_state['selected_mapel'] = 'Bahasa Indonesia'
+                
+        if 'selected_mapel' in st.session_state:
+            st.markdown(f"### Paket Soal: {st.session_state['selected_mapel']}")
+            
+            # Cari paket yang ada
+            q_ref = db.collection('questions').where('mapel', '==', st.session_state['selected_mapel']).stream()
+            pakets = set()
+            for q in q_ref:
+                d = q.to_dict()
+                pakets.add(d.get('paket', 'Tanpa Paket'))
+            
+            if not pakets:
+                st.warning("Belum ada soal untuk mapel ini.")
+            else:
+                for pkt in list(pakets):
+                    with st.container():
+                        c_a, c_b = st.columns([3, 1])
+                        c_a.write(f"**{pkt}** (30 Soal - 75 Menit)")
+                        # Cek history nilai tertinggi
+                        hist_ref = db.collection('results').where('username', '==', st.session_state['username']).where('paket', '==', pkt).stream()
+                        best_score = 0
+                        has_attempt = False
+                        for h in hist_ref:
+                            has_attempt = True
+                            s = h.to_dict().get('skor', 0)
+                            if s > best_score: best_score = s
+                        
+                        if has_attempt:
+                            c_a.caption(f"Nilai Tertinggi: {best_score:.1f}")
+                            btn_label = "Ulangi Ujian"
+                        else:
+                            btn_label = "Mulai Kerjakan"
+                            
+                        if c_b.button(btn_label, key=f"start_{pkt}"):
+                            success = init_exam_session(st.session_state['selected_mapel'], pkt)
+                            if success:
+                                st.session_state['exam_mode'] = True
+                                st.session_state['current_idx'] = 0
+                                st.rerun()
 
 def exam_interface():
-    rem = (75*60) - (time.time() - st.session_state['start'])
-    if rem <= 0: submit_exam(); return
-    m, s = divmod(int(rem), 60)
-    st.sidebar.markdown(f"<div class='timer-box'>{m:02d}:{s:02d}</div>", unsafe_allow_html=True)
-    if st.sidebar.button("Kumpulkan Jawaban"): submit_exam()
-
-    st.title(f"Soal {st.session_state['mapel']}")
-    for idx, row in st.session_state['q_data'].iterrows():
-        st.subheader(f"No. {idx+1}")
-        st.write(row['pertanyaan'])
-        
-        opsi = json.loads(row['opsi'])
-        key = f"q_{row['id']}"
-        
-        if row['tipe'] == 'single':
-            st.radio("Pilih:", opsi, key=key)
-        elif row['tipe'] == 'complex':
-            st.multiselect("Pilih (Bisa lebih dari 1):", opsi, key=key)
-        elif row['tipe'] == 'category':
-            for o in opsi: st.radio(o, ["Benar", "Salah"], key=f"{key}_{o}", horizontal=True)
-        
-        if key in st.session_state: st.session_state['ans'][row['id']] = st.session_state[key]
-        st.divider()
-
-def submit_exam():
-    score = 0; detail = []
-    for idx, row in st.session_state['q_data'].iterrows():
-        ans = st.session_state['ans'].get(row['id'])
-        try: kunci = json.loads(row['kunci_jawaban'])
-        except: kunci = row['kunci_jawaban'] 
-        
-        correct = False
-        if row['tipe'] == 'single' and ans == kunci: correct = True
-        elif row['tipe'] == 'complex' and ans and set(ans) == set(kunci): correct = True
-        elif row['tipe'] == 'category' and ans == kunci: correct = True
-        
-        if correct: score += 1
-        detail.append({'no': idx+1, 'tanya': row['pertanyaan'], 'jawab': ans, 'kunci': kunci, 'status': correct})
+    data = st.session_state['exam_data']
+    q_order = st.session_state['q_order']
+    curr_idx = st.session_state.get('current_idx', 0)
+    total_q = len(q_order)
     
-    final = (score / len(st.session_state['q_data'])) * 100
-    
-    data = {'username':st.session_state['username'], 'nama':st.session_state['nama'], 
-            'mapel':st.session_state['mapel'], 'skor':final, 
-            'tanggal':datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'detail':json.dumps(detail, default=str)}
-    db.collection('results').add(data)
-    
-    st.session_state.update({'exam_running':False, 'exam_done':True, 'final_score':final, 'review_data':detail})
-    st.rerun()
-
-def show_result_analysis():
-    st.balloons()
-    st.title(f"🎉 Hasil Ujian: {st.session_state['final_score']:.1f}")
-    if st.button("Kembali ke Menu Utama"):
-        st.session_state['exam_done'] = False
-        st.rerun()
-    st.subheader("Pembahasan Jawaban Kamu")
-    for item in st.session_state['review_data']:
-        with st.expander(f"No. {item['no']} - {'✅ Benar' if item['status'] else '❌ Salah'}"):
-            st.write(f"**Pertanyaan:** {item['tanya']}")
-            st.write(f"**Jawaban Kamu:** {item['jawab']}")
-            st.write(f"**Kunci Jawaban:** {item['kunci']}")
-            if not item['status']: st.markdown(":red[**Jawaban kamu masih kurang tepat.**]")
-            else: st.markdown(":green[**Hebat! Jawaban kamu tepat.**]")
-
-# --- MAIN ---
-if not st.session_state['logged_in']: login_page()
-else:
-    if st.session_state['role'] == 'admin': admin_page()
-    else: student_page()
+    # 1. HEADER UJIAN (Sticky)
+    # Hitung sisa waktu server-side
+    now_ts = datetime.now().timestamp()
+    r
