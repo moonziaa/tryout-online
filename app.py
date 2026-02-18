@@ -8,20 +8,18 @@ import random
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
-import altair as alt
 
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="CAT TKA SD", page_icon="🎓", layout="wide", initial_sidebar_state="collapsed")
 
 if 'font_size' not in st.session_state: st.session_state['font_size'] = '18px'
 
-# --- 2. CSS CUSTOM (PUSMENDIK STYLE) ---
+# --- 2. CSS CUSTOM ---
 st.markdown(f"""
 <style>
     [data-testid="stAppViewContainer"] {{ background-color: #f0f3f5; color: #333; }}
     [data-testid="stHeader"] {{ display: none; }}
     
-    /* Header Biru */
     .custom-header {{
         background: linear-gradient(90deg, #1e3a8a, #3b82f6);
         padding: 15px 20px; color: white; border-radius: 0 0 15px 15px;
@@ -29,27 +27,24 @@ st.markdown(f"""
         display: flex; justify-content: space-between; align-items: center;
     }}
     
-    /* Soal Card */
     .soal-container {{
-        background: white; padding: 40px; border-radius: 12px;
+        background: white; padding: 30px; border-radius: 12px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         font-size: {st.session_state['font_size']}; line-height: 1.8; min-height: 500px;
     }}
     
-    /* Grid Nomor Soal */
+    /* Grid Nomor */
     .grid-btn {{
         width: 100%; aspect-ratio: 1; border: 1px solid #ccc; border-radius: 4px;
         font-weight: bold; display: flex; align-items: center; justify-content: center;
-        margin-bottom: 8px; cursor: pointer; font-size: 14px;
+        margin-bottom: 8px; cursor: pointer; font-size: 14px; background: white;
     }}
     
     /* Status Warna */
     .status-done {{ background-color: #1e3a8a !important; color: white !important; border-color: #1e3a8a !important; }}
     .status-ragu {{ background-color: #facc15 !important; color: black !important; border-color: #eab308 !important; }}
-    .status-current {{ border: 2px solid #3b82f6 !important; transform: scale(1.1); font-weight: 900 !important; }}
-    .status-empty {{ background-color: white; color: black; }}
+    .status-current {{ border: 2px solid #3b82f6 !important; font-weight: 900 !important; transform: scale(1.1); }}
     
-    /* Hide Default */
     footer {{ visibility: hidden; }}
     .stDeployButton {{ display: none; }}
 </style>
@@ -69,20 +64,24 @@ def get_db():
 db = get_db()
 if not db: st.error("Gagal koneksi database."); st.stop()
 
-# --- 4. LOGIC SISTEM ---
+# --- 4. LOGIC SISTEM (ANTI LOGOUT) ---
 def auto_login():
-    """Cek apakah ada token login di URL (Fitur Anti Logout saat Refresh)"""
-    qp = st.query_params
-    if 'token' in qp and not st.session_state.get('logged_in'):
-        username = qp['token']
-        # Cek database untuk validasi
-        if username == 'admin':
-            st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Guru Admin', 'username':'admin'})
-        else:
-            doc = db.collection('users').document(username).get()
-            if doc.exists:
-                d = doc.to_dict()
-                st.session_state.update({'logged_in':True, 'role':'siswa', 'nama':d['nama_lengkap'], 'username':d['username']})
+    """Cek token di URL supaya tidak logout saat refresh"""
+    # Mengambil query params dengan cara terbaru Streamlit
+    try:
+        qp = st.query_params
+        token = qp.get("token", None)
+        
+        if token and not st.session_state.get('logged_in'):
+            if token == 'admin':
+                st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Guru Admin', 'username':'admin'})
+            else:
+                doc = db.collection('users').document(token).get()
+                if doc.exists:
+                    d = doc.to_dict()
+                    st.session_state.update({'logged_in':True, 'role':'siswa', 'nama':d['nama_lengkap'], 'username':d['username']})
+    except:
+        pass
 
 def process_image(uploaded_file):
     if uploaded_file:
@@ -99,11 +98,7 @@ def init_exam(mapel, paket):
     if doc.exists:
         data = doc.to_dict()
         if data.get('status') == 'completed': 
-            # Jika sudah selesai, cek apakah boleh ulang (disini kita buat boleh ulang tapi session baru)
-            # Untuk simplifikasi, kita load hasil terakhir dulu
-            st.warning("Anda sudah menyelesaikan ujian ini.")
-            return False
-            
+            st.warning("Ujian ini sudah selesai dikerjakan."); return False
         st.session_state.update({
             'exam_data': data, 'q_order': json.loads(data['q_order']),
             'answers': json.loads(data['answers']), 'ragu': json.loads(data.get('ragu', '[]')),
@@ -115,7 +110,7 @@ def init_exam(mapel, paket):
         
         if not q_list: st.error("Soal kosong."); return False
             
-        random.shuffle(q_list) # Randomize dalam paket
+        random.shuffle(q_list)
         q_order = [q['id'] for q in q_list]
         start_ts = datetime.now().timestamp()
         
@@ -161,7 +156,6 @@ def calculate_score():
         
     final = (score / len(q_ids)) * 100
     
-    # Save Result
     sid = f"{st.session_state['username']}_{st.session_state['exam_data']['mapel']}_{st.session_state['exam_data']['paket']}"
     db.collection('exam_sessions').document(sid).update({'status': 'completed', 'score': final})
     
@@ -183,7 +177,7 @@ def login_page():
             if st.form_submit_button("Masuk", use_container_width=True):
                 if u=="admin" and p=="admin123":
                     st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Administrator', 'username':'admin'})
-                    st.query_params["token"] = "admin" # Set Token
+                    st.query_params["token"] = "admin" 
                     st.rerun()
                 else:
                     users = db.collection('users').where('username','==',u).where('password','==',p).stream()
@@ -191,18 +185,21 @@ def login_page():
                     for user in users:
                         d = user.to_dict()
                         st.session_state.update({'logged_in':True, 'role':'siswa', 'nama':d['nama_lengkap'], 'username':d['username']})
-                        st.query_params["token"] = d['username'] # Set Token
+                        st.query_params["token"] = d['username'] 
                         found = True; st.rerun()
                     if not found: st.error("Akun tidak ditemukan")
 
 def admin_dashboard():
     st.markdown("<div class='custom-header'><h3>Dashboard Admin</h3><button onclick='window.location.href=\"/?logout=true\"' style='background:none;border:1px solid white;color:white;padding:5px 10px;border-radius:5px;cursor:pointer;'>Keluar</button></div>", unsafe_allow_html=True)
+    
+    # Logic Logout
     if st.query_params.get("logout"): 
-        st.query_params.clear(); st.session_state.clear(); st.rerun()
+        st.query_params.clear()
+        st.session_state.clear()
+        st.rerun()
     
     t1, t2, t3, t4 = st.tabs(["📝 Input Soal", "📂 Upload Teks (HP)", "🛠️ Edit Soal", "👥 Siswa"])
     
-    # --- INPUT SOAL MANUAL (FIXED) ---
     with t1:
         st.subheader("Input Soal")
         cm, ct = st.columns(2)
@@ -243,13 +240,12 @@ def admin_dashboard():
                 db.collection('questions').add({'mapel':in_mapel, 'paket':in_paket, 'tipe':rt, 'pertanyaan':tanya, 'gambar':imd, 'opsi':json.dumps(opsi), 'kunci_jawaban':json.dumps(kunci)})
                 st.success("Disimpan!")
 
-    # --- UPLOAD TEKS (HP) ---
     with t2:
         st.subheader("Paste Teks CSV (Pemisah Titik Koma ';')")
         txt = st.text_area("Paste disini", height=200)
         if st.button("Proses"):
             try:
-                df = pd.read_csv(io.StringIO(txt), sep=';') # PENTING: Pakai titik koma
+                df = pd.read_csv(io.StringIO(txt), sep=';') 
                 cnt = 0
                 for _, r in df.iterrows():
                     olist = [str(r[c]) for c in ['pilihan_a','pilihan_b','pilihan_c','pilihan_d'] if pd.notna(r[c])]
@@ -263,7 +259,6 @@ def admin_dashboard():
                 st.success(f"Masuk {cnt} Soal!")
             except Exception as e: st.error(f"Error: {e}")
 
-    # --- EDIT SOAL ---
     with t3:
         st.subheader("Edit Soal")
         fm = st.selectbox("Mapel", ["Matematika", "Bahasa Indonesia"], key="fm")
@@ -287,12 +282,11 @@ def admin_dashboard():
             if st.button("Hapus Soal"):
                 db.collection('questions').document(q['id']).delete(); st.rerun()
 
-    # --- SISWA ---
     with t4:
         st.subheader("Daftar Siswa")
         users = list(db.collection('users').where('role','!=','admin').stream())
-        udata = pd.DataFrame([u.to_dict() for u in users])
-        if not udata.empty:
+        if users:
+            udata = pd.DataFrame([u.to_dict() for u in users])
             st.dataframe(udata[['username','nama_lengkap','password']])
             
             st.write("### Edit Siswa")
@@ -309,8 +303,11 @@ def admin_dashboard():
 
 def student_dashboard():
     st.markdown(f"<div class='custom-header'><h3>Halo, {st.session_state['nama']}</h3><button onclick='window.location.href=\"/?logout=true\"' style='background:#ef4444; border:none; color:white; padding:8px 15px; border-radius:5px; cursor:pointer;'>Keluar</button></div>", unsafe_allow_html=True)
+    
     if st.query_params.get("logout"): 
-        st.query_params.clear(); st.session_state.clear(); st.rerun()
+        st.query_params.clear()
+        st.session_state.clear()
+        st.rerun()
     
     st.subheader("Pilih Ujian")
     if st.button("📐 Mulai Ujian Matematika (Paket 1)"):
@@ -321,7 +318,6 @@ def exam_interface():
     rem = data['end_time'] - datetime.now().timestamp()
     if rem <= 0: finish_exam()
     
-    # Header & Timer
     c1,c2,c3 = st.columns([6,2,2])
     with c1: st.markdown(f"**{data['mapel']}** | No. {idx+1}")
     with c2: st.markdown(f"<div style='background:#dbeafe; color:#1e40af; padding:5px; text-align:center;'>⏱️ {int(rem//60)}:{int(rem%60):02d}</div>", unsafe_allow_html=True)
@@ -331,10 +327,8 @@ def exam_interface():
         if c[1].button("A"): st.session_state['font_size']='18px'; st.rerun()
         if c[2].button("A+"): st.session_state['font_size']='24px'; st.rerun()
     
-    # Layout Utama
     col_soal, col_nav = st.columns([3, 1])
     
-    # --- AREA SOAL ---
     with col_soal:
         qid = order[idx]
         q_doc = db.collection('questions').document(qid).get()
@@ -345,7 +339,6 @@ def exam_interface():
             if q.get('gambar'): st.image(q['gambar'])
             st.write("")
             
-            # Input Jawaban
             opsi = json.loads(q['opsi']); ans = st.session_state['answers'].get(qid)
             if q['tipe'] == 'single':
                 sel = st.radio("Jawab:", opsi, key=qid, index=opsi.index(ans) if ans in opsi else None)
@@ -364,35 +357,40 @@ def exam_interface():
                 st.session_state['answers'][qid] = new_sel
             st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- NAVIGASI ---
     with col_nav:
         with st.expander("Daftar Soal", expanded=True):
             cols = st.columns(5)
             for i, q_id in enumerate(order):
                 bg = "white"; border = "#ccc"; txt = "black"
                 if q_id in st.session_state['answers'] and st.session_state['answers'][q_id]:
-                    bg = "#1e3a8a"; txt = "white" # Hijau/Biru Tua kalau sudah
+                    bg = "#1e3a8a"; txt = "white"
                 if q_id in st.session_state['ragu']:
-                    bg = "#facc15"; txt = "black" # Kuning kalau ragu
+                    bg = "#facc15"; txt = "black"
                 if i == idx:
-                    border = "#3b82f6" # Biru terang kalau sedang dibuka
+                    border = "#3b82f6"
                 
-                if cols[i%5].button(f"{i+1}", key=f"n{i}", help="Ke no ini"):
+                # Grid Button dengan Styling
+                cols[i%5].markdown(f"""
+                <div style="background:{bg}; color:{txt}; border:2px solid {border}; 
+                border-radius:5px; text-align:center; padding:5px; cursor:default; font-weight:bold;">
+                {i+1}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Invisible button on top for click (Streamlit limitation hack)
+                if cols[i%5].button(f"Go {i+1}", key=f"n{i}", label_visibility="collapsed"):
                     st.session_state['curr_idx'] = i; save_realtime(); st.rerun()
 
         st.divider()
-        # Tombol Ragu
         is_r = qid in st.session_state['ragu']
         if st.button(f"{'🟨 Batal Ragu' if is_r else '🟨 Ragu'}", use_container_width=True):
             if is_r: st.session_state['ragu'].remove(qid)
             else: st.session_state['ragu'].append(qid)
             save_realtime(); st.rerun()
             
-        # Tombol Prev/Next/Selesai
         c_p, c_n = st.columns(2)
-        if idx > 0:
-            if c_p.button("⬅️ Sblm", use_container_width=True):
-                st.session_state['curr_idx']-=1; save_realtime(); st.rerun()
+        if idx > 0 and c_p.button("⬅️ Sblm", use_container_width=True):
+            st.session_state['curr_idx']-=1; save_realtime(); st.rerun()
         
         if idx < len(order)-1:
             if c_n.button("Lanjut ➡️", use_container_width=True):
@@ -416,7 +414,7 @@ def result_interface():
         st.json(st.session_state['last_det'])
 
 # Main Loop
-auto_login() # Cek login saat refresh
+auto_login() # CEK LOGIN SAAT REFRESH
 if not st.session_state.get('logged_in'): login_page()
 else:
     if st.session_state['role'] == 'admin': admin_dashboard()
@@ -424,4 +422,3 @@ else:
         if st.session_state.get('exam_mode'): exam_interface()
         elif st.session_state.get('result_mode'): result_interface()
         else: student_dashboard()
-```
