@@ -14,42 +14,63 @@ st.set_page_config(page_title="CAT TKA SD", page_icon="🎓", layout="wide", ini
 
 if 'font_size' not in st.session_state: st.session_state['font_size'] = '18px'
 
-# --- 2. CSS CUSTOM ---
+# --- 2. CSS CUSTOM (SUPPORT DARK MODE & GRID FIX) ---
 st.markdown(f"""
 <style>
-    [data-testid="stAppViewContainer"] {{ background-color: #f0f3f5; color: #333; }}
+    /* --- LOGIKA WARNA OTOMATIS (LIGHT/DARK) --- */
+    :root {{
+        --bg-color: #ffffff;
+        --text-color: #333333;
+        --card-bg: #ffffff;
+        --border-color: #e0e0e0;
+    }}
+
+    @media (prefers-color-scheme: dark) {{
+        :root {{
+            --bg-color: #0e1117;
+            --text-color: #fafafa;
+            --card-bg: #262730;
+            --border-color: #464b5f;
+        }}
+    }}
+
+    /* Reset Header Bawaan */
     [data-testid="stHeader"] {{ display: none; }}
+    
+    /* Header Custom */
     .custom-header {{
         background: linear-gradient(90deg, #1e3a8a, #3b82f6);
-        padding: 20px; color: white; border-radius: 0 0 20px 20px;
-        margin-bottom: 30px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        padding: 15px 20px; color: white; border-radius: 0 0 15px 15px;
+        margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         display: flex; justify-content: space-between; align-items: center;
     }}
+    
+    /* Kotak Soal (Mengikuti Tema) */
     .soal-container {{
-        background: white; padding: 40px; border-radius: 15px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.05);
-        font-size: {st.session_state['font_size']}; line-height: 1.8; min-height: 500px;
+        background-color: var(--card-bg);
+        color: var(--text-color);
+        padding: 30px; 
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        font-size: {st.session_state['font_size']}; 
+        line-height: 1.8; 
+        min-height: 450px;
     }}
-    .grid-btn {{
-        width: 100%; aspect-ratio: 1; border: 1px solid #ccc; border-radius: 8px;
-        font-weight: bold; display: flex; align-items: center; justify-content: center;
-        margin-bottom: 8px; cursor: pointer; font-size: 14px; background: white;
-        transition: all 0.2s;
+
+    /* Legenda Status (Supaya Siswa Tahu Arti Warna) */
+    .legend-box {{
+        font-size: 12px; margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;
     }}
-    .grid-btn:hover {{ transform: scale(1.05); }}
-    .status-done {{ background-color: #1e3a8a !important; color: white !important; border-color: #1e3a8a !important; }}
-    .status-ragu {{ background-color: #facc15 !important; color: black !important; border-color: #eab308 !important; }}
-    .status-current {{ border: 2px solid #3b82f6 !important; font-weight: 900 !important; transform: scale(1.1); box-shadow: 0 0 10px rgba(59,130,246,0.5); }}
+    .legend-item {{ display: flex; align-items: center; gap: 5px; }}
+    .dot {{ width: 10px; height: 10px; border-radius: 50%; display: inline-block; }}
     
-    /* Login Box */
-    .login-box {{
-        background: white; padding: 30px; border-radius: 15px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-        margin-top: 50px;
-    }}
-    
+    /* Sembunyikan Elemen Mengganggu */
     footer {{ visibility: hidden; }}
     .stDeployButton {{ display: none; }}
+    
+    /* Perbaikan Tampilan Radio & Checkbox di Dark Mode */
+    .stRadio label, .stCheckbox label {{ color: var(--text-color) !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -65,7 +86,7 @@ def get_db():
     except: return None
 
 db = get_db()
-if not db: st.error("Gagal koneksi database."); st.stop()
+if not db: st.error("Gagal koneksi database. Cek Secrets."); st.stop()
 
 # --- 4. LOGIC SISTEM ---
 def auto_login():
@@ -99,7 +120,7 @@ def init_exam(mapel, paket):
     if doc.exists:
         data = doc.to_dict()
         if data.get('status') == 'completed': 
-            st.warning("Kamu sudah menyelesaikan ujian ini. Nilai sudah tersimpan."); return False
+            st.warning("Ujian ini sudah selesai."); return False
         st.session_state.update({
             'exam_data': data, 'q_order': json.loads(data['q_order']),
             'answers': json.loads(data['answers']), 'ragu': json.loads(data.get('ragu', '[]')),
@@ -108,7 +129,7 @@ def init_exam(mapel, paket):
     else:
         q_ref = db.collection('questions').where('mapel', '==', mapel).where('paket', '==', paket).stream()
         q_list = [{'id': q.id, **q.to_dict()} for q in q_ref]
-        if not q_list: st.error("Soal belum tersedia, hubungi Guru."); return False
+        if not q_list: st.error("Soal kosong."); return False
         random.shuffle(q_list)
         q_order = [q['id'] for q in q_list]
         start_ts = datetime.now().timestamp()
@@ -163,22 +184,24 @@ def calculate_score():
     })
     return final, details
 
-# --- 5. HALAMAN UTAMA ---
+# --- 5. HALAMAN ---
 def login_page():
+    # Menggunakan container untuk layout login yang rapi
+    st.markdown("<br>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
-        st.markdown("<br><br><h1 style='text-align:center; color:#1e3a8a;'>🎓 CAT TKA SD</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align:center; color:#1e3a8a;'>🎓 CAT TKA SD</h1>", unsafe_allow_html=True)
+        st.markdown("<div class='login-box'>", unsafe_allow_html=True)
         
-        # TAB UNTUK MASUK / DAFTAR
-        tab_login, tab_daftar = st.tabs(["🔑 Masuk", "📝 Daftar Akun Baru"])
+        tab_in, tab_up = st.tabs(["🔑 Masuk", "📝 Daftar"])
         
-        with tab_login:
-            with st.form("login_form"):
+        with tab_in:
+            with st.form("login"):
                 u = st.text_input("Username")
                 p = st.text_input("Password", type="password")
                 if st.form_submit_button("Masuk", use_container_width=True):
                     if u=="admin" and p=="admin123":
-                        st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Administrator', 'username':'admin'})
+                        st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Admin', 'username':'admin'})
                         st.query_params["token"] = "admin"
                         st.rerun()
                     else:
@@ -189,35 +212,28 @@ def login_page():
                             st.session_state.update({'logged_in':True, 'role':'siswa', 'nama':d['nama_lengkap'], 'username':d['username']})
                             st.query_params["token"] = d['username']
                             found = True; st.rerun()
-                        if not found: st.error("Username atau Password salah")
-
-        with tab_daftar:
-            st.info("Belum punya akun? Buat sendiri di sini.")
-            with st.form("register_form"):
-                new_u = st.text_input("Buat Username (Tanpa spasi)", placeholder="contoh: budi123")
-                new_n = st.text_input("Nama Lengkap", placeholder="Budi Santoso")
-                new_p = st.text_input("Buat Password", type="password")
-                
-                if st.form_submit_button("Daftar Sekarang", use_container_width=True):
-                    if new_u and new_n and new_p:
-                        # Cek username kembar
-                        check = db.collection('users').document(new_u).get()
-                        if check.exists:
-                            st.error("Username sudah dipakai teman lain. Coba yang lain.")
+                        if not found: st.error("Akun salah")
+        
+        with tab_up:
+            with st.form("reg"):
+                nu = st.text_input("Username Baru (Tanpa Spasi)")
+                nn = st.text_input("Nama Lengkap")
+                np = st.text_input("Password", type="password")
+                if st.form_submit_button("Daftar", use_container_width=True):
+                    if nu and nn and np:
+                        chk = db.collection('users').document(nu).get()
+                        if chk.exists: st.error("Username sudah dipakai.")
                         else:
-                            db.collection('users').document(new_u).set({
-                                'username': new_u, 'password': new_p, 
-                                'nama_lengkap': new_n, 'role': 'siswa'
-                            })
-                            st.success("Berhasil daftar! Silakan pindah ke tab 'Masuk'.")
-                    else:
-                        st.warning("Semua kolom harus diisi ya.")
+                            db.collection('users').document(nu).set({'username':nu, 'password':np, 'nama_lengkap':nn, 'role':'siswa'})
+                            st.success("Berhasil! Silakan Login.")
+        
+        st.markdown("</div>", unsafe_allow_html=True)
 
 def admin_dashboard():
     st.markdown("<div class='custom-header'><h3>Dashboard Admin</h3><button onclick='window.location.href=\"/?logout=true\"' style='background:none;border:1px solid white;color:white;padding:5px 10px;border-radius:5px;cursor:pointer;'>Keluar</button></div>", unsafe_allow_html=True)
     if st.query_params.get("logout"): st.query_params.clear(); st.session_state.clear(); st.rerun()
     
-    t1, t2, t3, t4 = st.tabs(["📝 Input Soal", "📂 Upload Teks (HP)", "🛠️ Edit Soal", "👥 Data Siswa"])
+    t1, t2, t3, t4 = st.tabs(["📝 Input Soal", "📂 Upload Teks (HP)", "🛠️ Edit Soal", "👥 Siswa"])
     
     with t1:
         st.subheader("Input Soal")
@@ -259,7 +275,7 @@ def admin_dashboard():
                 st.success("Disimpan!")
 
     with t2:
-        st.subheader("Paste Teks CSV (Pemisah Garis Tegak '|')")
+        st.subheader("Paste Teks CSV (Pemisah Pipa '|')")
         txt = st.text_area("Paste disini", height=200)
         if st.button("Proses"):
             try:
@@ -299,62 +315,30 @@ def admin_dashboard():
             if st.button("Hapus Soal"):
                 db.collection('questions').document(q['id']).delete(); st.rerun()
 
-    # --- TAB 4: DATA SISWA (HANYA VIEW, NO PASSWORD) ---
     with t4:
-        st.subheader("Daftar Siswa Terdaftar")
+        st.subheader("Data Siswa")
         users = list(db.collection('users').where('role','!=','admin').stream())
         if users:
-            # Hanya tampilkan Username dan Nama, Password disembunyikan
-            data_view = [{"Username": u.to_dict().get('username'), "Nama Lengkap": u.to_dict().get('nama_lengkap')} for u in users]
-            st.dataframe(pd.DataFrame(data_view), use_container_width=True)
-            
-            st.caption(f"Total Siswa: {len(users)}")
-            
-            with st.expander("Kelola Akun (Hapus/Reset)"):
-                st.warning("Area Berbahaya: Hapus akun jika ada siswa lupa password atau salah input.")
-                pilih_hapus = st.selectbox("Pilih Username untuk Dihapus", [u['Username'] for u in data_view])
-                if st.button("Hapus Akun Siswa Ini", type="primary"):
-                    db.collection('users').document(pilih_hapus).delete()
-                    st.success("Terhapus"); time.sleep(1); st.rerun()
+            udata = pd.DataFrame([u.to_dict() for u in users])
+            st.dataframe(udata[['username','nama_lengkap']], hide_index=True)
+            st.caption("Password disembunyikan untuk privasi.")
 
 def student_dashboard():
-    # HEADER DENGAN SAPAAN
-    st.markdown(f"""
-    <div class='custom-header'>
-        <div>
-            <h2 style='margin:0;'>Haloo {st.session_state['nama']}! 👋</h2>
-            <p style='margin:0; opacity:0.9;'>Siap untuk latihan hari ini?</p>
-        </div>
-        <button onclick='window.location.href=\"/?logout=true\"' style='background:#ef4444; border:none; color:white; padding:8px 15px; border-radius:5px; cursor:pointer; font-weight:bold;'>Keluar</button>
-    </div>
-    """, unsafe_allow_html=True)
-    
+    st.markdown(f"<div class='custom-header'><h3>Halo, {st.session_state['nama']}! 👋</h3><button onclick='window.location.href=\"/?logout=true\"' style='background:#ef4444; border:none; color:white; padding:8px 15px; border-radius:5px; cursor:pointer;'>Keluar</button></div>", unsafe_allow_html=True)
     if st.query_params.get("logout"): st.query_params.clear(); st.session_state.clear(); st.rerun()
-    
-    col_main, _ = st.columns([2, 1])
-    with col_main:
-        st.subheader("Pilih Mata Pelajaran")
-        c1, c2 = st.columns(2)
-        with c1:
-            with st.container(border=True):
-                st.markdown("### 📐 Matematika")
-                st.write("30 Soal | 75 Menit")
-                if st.button("Mulai Paket 1", key="btn_mtk", type="primary", use_container_width=True):
-                    if init_exam("Matematika", "Paket 1"): st.rerun()
-        with c2:
-            with st.container(border=True):
-                st.markdown("### 📖 B. Indonesia")
-                st.write("Segera Hadir")
-                st.button("Belum Tersedia", disabled=True, use_container_width=True)
+    st.subheader("Pilih Ujian")
+    if st.button("📐 Mulai Ujian Matematika (Paket 1)"):
+        if init_exam("Matematika", "Paket 1"): st.rerun()
 
 def exam_interface():
     data = st.session_state['exam_data']; order = st.session_state['q_order']; idx = st.session_state['curr_idx']
     rem = data['end_time'] - datetime.now().timestamp()
     if rem <= 0: finish_exam()
     
+    # Header & Timer
     c1,c2,c3 = st.columns([6,2,2])
     with c1: st.markdown(f"**{data['mapel']}** | No. {idx+1}")
-    with c2: st.markdown(f"<div style='background:#dbeafe; color:#1e40af; padding:5px; text-align:center;'>⏱️ {int(rem//60)}:{int(rem%60):02d}</div>", unsafe_allow_html=True)
+    with c2: st.markdown(f"<div style='background:#dbeafe; color:#1e40af; padding:5px; text-align:center; font-weight:bold; border-radius:5px;'>⏱️ {int(rem//60)}:{int(rem%60):02d}</div>", unsafe_allow_html=True)
     with c3: 
         c = st.columns(3)
         if c[0].button("A-"): st.session_state['font_size']='14px'; st.rerun()
@@ -362,6 +346,7 @@ def exam_interface():
         if c[2].button("A+"): st.session_state['font_size']='24px'; st.rerun()
     
     col_soal, col_nav = st.columns([3, 1])
+    
     with col_soal:
         qid = order[idx]
         q_doc = db.collection('questions').document(qid).get()
@@ -371,6 +356,7 @@ def exam_interface():
             st.write(q['pertanyaan'])
             if q.get('gambar'): st.image(q['gambar'])
             st.write("")
+            
             opsi = json.loads(q['opsi']); ans = st.session_state['answers'].get(qid)
             if q['tipe'] == 'single':
                 sel = st.radio("Jawab:", opsi, key=qid, index=opsi.index(ans) if ans in opsi else None)
@@ -390,26 +376,40 @@ def exam_interface():
             st.markdown("</div>", unsafe_allow_html=True)
 
     with col_nav:
-        with st.expander("Daftar Soal", expanded=True):
-            cols = st.columns(5)
-            for i, q_id in enumerate(order):
-                bg = "white"; border = "#ccc"; txt = "black"
-                if q_id in st.session_state['answers'] and st.session_state['answers'][q_id]:
-                    bg = "#1e3a8a"; txt = "white"
-                if q_id in st.session_state['ragu']:
-                    bg = "#facc15"; txt = "black"
-                if i == idx:
-                    border = "#3b82f6"
-                cols[i%5].markdown(f"""<div style="background:{bg}; color:{txt}; border:2px solid {border}; border-radius:5px; text-align:center; padding:5px; cursor:default; font-weight:bold;">{i+1}</div>""", unsafe_allow_html=True)
-                if cols[i%5].button(f"Go {i+1}", key=f"n{i}", label_visibility="collapsed"):
-                    st.session_state['curr_idx'] = i; save_realtime(); st.rerun()
+        st.write("**Navigasi Soal**")
+        st.markdown("""
+        <div class='legend-box'>
+            <div class='legend-item'><span class='dot' style='background:#1e3a8a;'></span> Sudah</div>
+            <div class='legend-item'><span class='dot' style='background:#facc15;'></span> Ragu</div>
+            <div class='legend-item'><span class='dot' style='background:white; border:1px solid #ccc;'></span> Belum</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # GRID YANG SUDAH DIPERBAIKI (MENGGUNAKAN TOMBOL STANDAR DENGAN WARNA)
+        cols = st.columns(5)
+        for i, q_id in enumerate(order):
+            # Tentukan Tipe Tombol
+            btn_type = "secondary"
+            label = str(i+1)
+            
+            # Cek status untuk memberi tanda visual di label
+            if q_id == order[idx]:
+                label = f"🔵 {i+1}" # Sedang dibuka
+            elif q_id in st.session_state['ragu']:
+                label = f"🟡 {i+1}" # Ragu
+            elif q_id in st.session_state['answers'] and st.session_state['answers'][q_id]:
+                label = f"✅ {i+1}" # Sudah dijawab
+            
+            if cols[i%5].button(label, key=f"nav_{i}", use_container_width=True):
+                st.session_state['curr_idx'] = i; save_realtime(); st.rerun()
 
         st.divider()
         is_r = qid in st.session_state['ragu']
-        if st.button(f"{'🟨 Batal Ragu' if is_r else '🟨 Ragu'}", use_container_width=True):
+        if st.button(f"{'🟨 Batal Ragu' if is_r else '🟨 Ragu-Ragu'}", use_container_width=True):
             if is_r: st.session_state['ragu'].remove(qid)
             else: st.session_state['ragu'].append(qid)
             save_realtime(); st.rerun()
+            
         c_p, c_n = st.columns(2)
         if idx > 0 and c_p.button("⬅️ Sblm", use_container_width=True):
             st.session_state['curr_idx']-=1; save_realtime(); st.rerun()
