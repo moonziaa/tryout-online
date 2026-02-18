@@ -10,67 +10,105 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # --- 1. KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="CAT TKA SD", page_icon="🎓", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(
+    page_title="LATIHAN TRY OUT TKA SD", 
+    page_icon="🎓", 
+    layout="wide", 
+    initial_sidebar_state="collapsed"
+)
 
-if 'font_size' not in st.session_state: st.session_state['font_size'] = '18px'
+# Inisialisasi Font Size Default
+if 'font_size' not in st.session_state: st.session_state['font_size'] = 18
 
-# --- 2. CSS CUSTOM (SUPPORT DARK MODE & GRID FIX) ---
+# --- 2. CSS CUSTOM (UI/UX MODERN) ---
 st.markdown(f"""
 <style>
-    /* --- LOGIKA WARNA OTOMATIS (LIGHT/DARK) --- */
+    /* VARIASI WARNA */
     :root {{
-        --bg-color: #ffffff;
-        --text-color: #333333;
-        --card-bg: #ffffff;
-        --border-color: #e0e0e0;
+        --primary: #4F46E5;
+        --secondary: #ec4899;
+        --bg-light: #f3f4f6;
+        --card-light: #ffffff;
+        --text-light: #1f2937;
     }}
 
-    @media (prefers-color-scheme: dark) {{
-        :root {{
-            --bg-color: #0e1117;
-            --text-color: #fafafa;
-            --card-bg: #262730;
-            --border-color: #464b5f;
-        }}
-    }}
-
-    /* Reset Header Bawaan */
+    /* HILANGKAN ELEMENT BAWAAN STREAMLIT */
     [data-testid="stHeader"] {{ display: none; }}
-    
-    /* Header Custom */
-    .custom-header {{
-        background: linear-gradient(90deg, #1e3a8a, #3b82f6);
-        padding: 15px 20px; color: white; border-radius: 0 0 15px 15px;
-        margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        display: flex; justify-content: space-between; align-items: center;
-    }}
-    
-    /* Kotak Soal (Mengikuti Tema) */
-    .soal-container {{
-        background-color: var(--card-bg);
-        color: var(--text-color);
-        padding: 30px; 
-        border-radius: 12px;
-        border: 1px solid var(--border-color);
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        font-size: {st.session_state['font_size']}; 
-        line-height: 1.8; 
-        min-height: 450px;
-    }}
-
-    /* Legenda Status (Supaya Siswa Tahu Arti Warna) */
-    .legend-box {{
-        font-size: 12px; margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;
-    }}
-    .legend-item {{ display: flex; align-items: center; gap: 5px; }}
-    .dot {{ width: 10px; height: 10px; border-radius: 50%; display: inline-block; }}
-    
-    /* Sembunyikan Elemen Mengganggu */
     footer {{ visibility: hidden; }}
     .stDeployButton {{ display: none; }}
     
-    /* Perbaikan Tampilan Radio & Checkbox di Dark Mode */
-    .stRadio label, .stCheckbox label {{ color: var(--text-color) !important; }}
+    /* HEADER CUSTOM */
+    .header-bar {{
+        background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+        padding: 1.5rem 2rem;
+        border-radius: 0 0 25px 25px;
+        color: white;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+        display: flex; justify-content: space-between; align-items: center;
+    }}
+    
+    /* KOTAK SOAL */
+    .soal-card {{
+        background-color: var(--card-light);
+        padding: 40px;
+        border-radius: 20px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+        font-size: {st.session_state['font_size']}px;
+        line-height: 1.8;
+        margin-bottom: 20px;
+        min-height: 400px;
+    }}
+    
+    /* GRID NOMOR SOAL */
+    .grid-box {{
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+        padding: 20px;
+        background: white;
+        border-radius: 15px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }}
+    
+    /* Tombol Navigasi Bawah (Prev/Next) */
+    .nav-container {{
+        display: flex; 
+        justify-content: space-between; 
+        gap: 15px; 
+        margin-top: 30px;
+    }}
+    
+    /* KARTU MAPEL (Dashboard) */
+    .card-dashboard {{
+        padding: 30px;
+        border-radius: 20px;
+        text-align: center;
+        color: white;
+        transition: transform 0.2s;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }}
+    .card-mtk {{ background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }}
+    .card-indo {{ background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); }}
+    .card-dashboard:hover {{ transform: translateY(-5px); }}
+
+    /* TIMER */
+    .timer-float {{
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #1f2937;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 30px;
+        font-weight: bold;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        z-index: 999;
+    }}
+    
 </style>
 """, unsafe_allow_html=True)
 
@@ -86,10 +124,11 @@ def get_db():
     except: return None
 
 db = get_db()
-if not db: st.error("Gagal koneksi database. Cek Secrets."); st.stop()
+if not db: st.error("Koneksi Database Gagal. Cek Secrets!"); st.stop()
 
-# --- 4. LOGIC SISTEM ---
+# --- 4. LOGIC ---
 def auto_login():
+    """Anti-Logout saat refresh menggunakan Query Params"""
     try:
         qp = st.query_params
         token = qp.get("token", None)
@@ -119,8 +158,9 @@ def init_exam(mapel, paket):
     
     if doc.exists:
         data = doc.to_dict()
-        if data.get('status') == 'completed': 
-            st.warning("Ujian ini sudah selesai."); return False
+        if data.get('status') == 'completed':
+            st.toast("Kamu sudah menyelesaikan ujian ini. Lihat nilai di menu.", icon="ℹ️")
+            return False
         st.session_state.update({
             'exam_data': data, 'q_order': json.loads(data['q_order']),
             'answers': json.loads(data['answers']), 'ragu': json.loads(data.get('ragu', '[]')),
@@ -129,10 +169,13 @@ def init_exam(mapel, paket):
     else:
         q_ref = db.collection('questions').where('mapel', '==', mapel).where('paket', '==', paket).stream()
         q_list = [{'id': q.id, **q.to_dict()} for q in q_ref]
-        if not q_list: st.error("Soal kosong."); return False
+        
+        if not q_list: st.error("Soal belum tersedia."); return False
+        
         random.shuffle(q_list)
         q_order = [q['id'] for q in q_list]
         start_ts = datetime.now().timestamp()
+        
         new_data = {
             'username': st.session_state['username'], 'mapel': mapel, 'paket': paket,
             'start_time': start_ts, 'end_time': start_ts + (75*60),
@@ -184,22 +227,22 @@ def calculate_score():
     })
     return final, details
 
-# --- 5. HALAMAN ---
+# --- 5. PAGE FUNCTIONS ---
+
 def login_page():
-    # Menggunakan container untuk layout login yang rapi
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
-        st.markdown("<h1 style='text-align:center; color:#1e3a8a;'>🎓 CAT TKA SD</h1>", unsafe_allow_html=True)
-        st.markdown("<div class='login-box'>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align:center; color:#4F46E5;'>🎓 CAT TKA SD</h1>", unsafe_allow_html=True)
+        st.markdown("<div style='background:white; padding:30px; border-radius:20px; box-shadow:0 10px 30px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
         
-        tab_in, tab_up = st.tabs(["🔑 Masuk", "📝 Daftar"])
+        tab_login, tab_register = st.tabs(["🔑 Masuk", "📝 Daftar Akun"])
         
-        with tab_in:
-            with st.form("login"):
+        with tab_login:
+            with st.form("login_form"):
                 u = st.text_input("Username")
                 p = st.text_input("Password", type="password")
-                if st.form_submit_button("Masuk", use_container_width=True):
+                if st.form_submit_button("Masuk", use_container_width=True, type="primary"):
                     if u=="admin" and p=="admin123":
                         st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Admin', 'username':'admin'})
                         st.query_params["token"] = "admin"
@@ -212,213 +255,266 @@ def login_page():
                             st.session_state.update({'logged_in':True, 'role':'siswa', 'nama':d['nama_lengkap'], 'username':d['username']})
                             st.query_params["token"] = d['username']
                             found = True; st.rerun()
-                        if not found: st.error("Akun salah")
+                        if not found: st.error("Username/Password salah")
         
-        with tab_up:
-            with st.form("reg"):
-                nu = st.text_input("Username Baru (Tanpa Spasi)")
+        with tab_register:
+            with st.form("reg_form"):
+                nu = st.text_input("Buat Username (Tanpa Spasi)")
                 nn = st.text_input("Nama Lengkap")
-                np = st.text_input("Password", type="password")
-                if st.form_submit_button("Daftar", use_container_width=True):
+                np = st.text_input("Buat Password", type="password")
+                if st.form_submit_button("Daftar Sekarang", use_container_width=True):
                     if nu and nn and np:
                         chk = db.collection('users').document(nu).get()
-                        if chk.exists: st.error("Username sudah dipakai.")
+                        if chk.exists: st.error("Username sudah dipakai, cari yang lain.")
                         else:
                             db.collection('users').document(nu).set({'username':nu, 'password':np, 'nama_lengkap':nn, 'role':'siswa'})
-                            st.success("Berhasil! Silakan Login.")
-        
+                            st.success("Berhasil! Silakan klik tab Masuk.")
+                    else: st.warning("Isi semua kolom ya.")
         st.markdown("</div>", unsafe_allow_html=True)
 
 def admin_dashboard():
-    st.markdown("<div class='custom-header'><h3>Dashboard Admin</h3><button onclick='window.location.href=\"/?logout=true\"' style='background:none;border:1px solid white;color:white;padding:5px 10px;border-radius:5px;cursor:pointer;'>Keluar</button></div>", unsafe_allow_html=True)
+    # Header Admin
+    st.markdown(f"""
+    <div class='header-bar'>
+        <div>
+            <h2 style='margin:0'>Dashboard Guru</h2>
+            <p style='margin:0; opacity:0.8'>Kelola Soal & Siswa</p>
+        </div>
+        <a href='/?logout=true' style='background:rgba(255,255,255,0.2); padding:8px 15px; border-radius:8px; color:white; text-decoration:none;'>Keluar</a>
+    </div>
+    """, unsafe_allow_html=True)
+    
     if st.query_params.get("logout"): st.query_params.clear(); st.session_state.clear(); st.rerun()
     
-    t1, t2, t3, t4 = st.tabs(["📝 Input Soal", "📂 Upload Teks (HP)", "🛠️ Edit Soal", "👥 Siswa"])
+    t1, t2, t3, t4 = st.tabs(["📝 Input Soal", "📂 Upload CSV", "🛠️ Edit Bank Soal", "👥 Data Siswa"])
     
+    # INPUT SOAL DINAMIS
     with t1:
-        st.subheader("Input Soal")
-        cm, ct = st.columns(2)
-        in_mapel = cm.selectbox("Mapel", ["Matematika", "Bahasa Indonesia"])
-        in_tipe = ct.selectbox("Tipe", ["Pilihan Ganda (PG)", "PG Kompleks", "Benar/Salah"])
-        in_paket = st.text_input("Paket", "Paket 1")
+        st.subheader("Input Soal Baru")
+        # PENTING: Selectbox DI LUAR FORM agar interaktif
+        c1, c2 = st.columns(2)
+        v_mapel = c1.selectbox("Mapel", ["Matematika", "Bahasa Indonesia"])
+        v_paket = c2.text_input("Nama Paket", "Paket 1")
+        v_tipe = st.selectbox("Tipe Soal", ["Pilihan Ganda (PG)", "PG Kompleks", "Benar/Salah"])
         
-        with st.form("f_soal"):
-            tanya = st.text_area("Pertanyaan")
-            img = st.file_uploader("Gambar", type=['png','jpg'])
+        with st.form("frm_soal"):
+            v_tanya = st.text_area("Pertanyaan")
+            v_img = st.file_uploader("Gambar (Opsional)", type=['png','jpg','jpeg'])
+            
             opsi = []; kunci = None
             st.markdown("---")
-            if in_tipe == "Pilihan Ganda (PG)":
+            
+            # Logic Tampilan Berdasarkan Tipe
+            if v_tipe == "Pilihan Ganda (PG)":
                 cols = st.columns(4)
                 opsi = [cols[i].text_input(f"Opsi {chr(65+i)}") for i in range(4)]
-                ans = st.radio("Kunci", ["A","B","C","D"], horizontal=True)
+                ans = st.radio("Kunci Jawaban", ["A","B","C","D"], horizontal=True)
                 if opsi[0]: kunci = opsi[ord(ans)-65]
                 rt = 'single'
-            elif in_tipe == "PG Kompleks":
+                
+            elif v_tipe == "PG Kompleks":
+                st.info("Centang semua jawaban benar")
                 cols = st.columns(2); k_list = []
                 for i in range(4):
-                    v = cols[i%2].text_input(f"Pil {i+1}")
-                    if v: opsi.append(v)
-                    if cols[i%2].checkbox(f"Benar?", key=f"c{i}"): k_list.append(v)
+                    val = cols[i%2].text_input(f"Pilihan {i+1}")
+                    if val: opsi.append(val)
+                    if cols[i%2].checkbox(f"Benar?", key=f"k_{i}"): k_list.append(val)
                 kunci = k_list; rt = 'complex'
-            elif in_tipe == "Benar/Salah":
+                
+            elif v_tipe == "Benar/Salah":
                 kunci = {}
                 for i in range(3):
-                    c1, c2 = st.columns([3,1])
-                    p = c1.text_input(f"Pernyataan {i+1}")
-                    k = c2.radio(f"Kunci", ["Benar","Salah"], key=f"bs{i}", horizontal=True, label_visibility="collapsed")
+                    c_a, c_b = st.columns([3,1])
+                    p = c_a.text_input(f"Pernyataan {i+1}")
+                    k = c_b.radio(f"Kunci", ["Benar","Salah"], horizontal=True, key=f"bs_{i}", label_visibility="collapsed")
                     if p: opsi.append(p); kunci[p] = k
                 rt = 'category'
             
-            if st.form_submit_button("Simpan"):
-                imd = process_image(img)
-                db.collection('questions').add({'mapel':in_mapel, 'paket':in_paket, 'tipe':rt, 'pertanyaan':tanya, 'gambar':imd, 'opsi':json.dumps(opsi), 'kunci_jawaban':json.dumps(kunci)})
-                st.success("Disimpan!")
+            if st.form_submit_button("Simpan Soal"):
+                im_data = process_image(v_img)
+                db.collection('questions').add({
+                    'mapel':v_mapel, 'paket':v_paket, 'tipe':rt, 'pertanyaan':v_tanya, 
+                    'gambar':im_data, 'opsi':json.dumps(opsi), 'kunci_jawaban':json.dumps(kunci)
+                })
+                st.success("Soal tersimpan ke database!")
 
+    # UPLOAD CSV
     with t2:
-        st.subheader("Paste Teks CSV (Pemisah Pipa '|')")
-        txt = st.text_area("Paste disini", height=200)
-        if st.button("Proses"):
+        st.info("Format: Pipa (|) sebagai pemisah. Copy dari Chatbot.")
+        txt = st.text_area("Paste Teks CSV disini", height=200)
+        if st.button("Proses Upload"):
             try:
                 df = pd.read_csv(io.StringIO(txt), sep='|')
                 cnt = 0
                 for _, r in df.iterrows():
-                    olist = [str(r[c]) for c in ['pilihan_a','pilihan_b','pilihan_c','pilihan_d'] if pd.notna(r[c])]
+                    o = [str(r[c]) for c in ['pilihan_a','pilihan_b','pilihan_c','pilihan_d'] if pd.notna(r[c])]
                     rt='single'; rk=str(r['jawaban_benar']); fk=rk
                     if 'Check' in str(r['tipe']): rt='complex'; fk=[x.strip() for x in rk.split(',')]
                     elif 'Benar' in str(r['tipe']): 
                         rt='category'; ks=[x.strip() for x in rk.split(',')]
-                        fk={olist[i]:ks[i] for i in range(len(ks)) if i<len(olist)}
-                    db.collection('questions').add({'mapel':r['mapel'], 'paket':'Paket 1', 'tipe':rt, 'pertanyaan':r['pertanyaan'], 'gambar':None, 'opsi':json.dumps(olist), 'kunci_jawaban':json.dumps(fk)})
+                        fk={o[i]:ks[i] for i in range(len(ks)) if i<len(o)}
+                    db.collection('questions').add({'mapel':r['mapel'], 'paket':'Paket 1', 'tipe':rt, 'pertanyaan':r['pertanyaan'], 'gambar':None, 'opsi':json.dumps(o), 'kunci_jawaban':json.dumps(fk)})
                     cnt+=1
-                st.success(f"Masuk {cnt} Soal!")
+                st.success(f"Masuk {cnt} soal!")
             except Exception as e: st.error(f"Error: {e}")
 
+    # EDIT SOAL
     with t3:
-        st.subheader("Edit Soal")
-        fm = st.selectbox("Mapel", ["Matematika", "Bahasa Indonesia"], key="fm_ed")
-        fp = st.text_input("Filter Paket", "Paket 1", key="fp_ed")
-        qref = list(db.collection('questions').where('mapel','==',fm).where('paket','==',fp).stream())
+        f_m = st.selectbox("Mapel", ["Matematika","Bahasa Indonesia"], key="fm")
+        f_p = st.text_input("Paket", "Paket 1", key="fp")
+        qs = list(db.collection('questions').where('mapel','==',f_m).where('paket','==',f_p).stream())
         
-        if qref:
-            qs = [{'id':q.id, **q.to_dict()} for q in qref]
-            sel = st.selectbox("Pilih Soal", range(len(qs)), format_func=lambda x: qs[x]['pertanyaan'][:60])
-            q = qs[sel]
-            with st.form("ed"):
-                nt = st.text_area("Tanya", q['pertanyaan'])
+        if qs:
+            q_data = [{'id':q.id, **q.to_dict()} for q in qs]
+            sel = st.selectbox("Pilih Soal", range(len(q_data)), format_func=lambda x: q_data[x]['pertanyaan'][:80])
+            q = q_data[sel]
+            
+            with st.form("edit_f"):
+                nt = st.text_area("Edit Tanya", q['pertanyaan'])
                 if q.get('gambar'): st.image(q['gambar'], width=200)
                 ni = st.file_uploader("Ganti Gambar")
-                if st.form_submit_button("Update"):
-                    ud = {'pertanyaan':nt}
+                
+                # Edit Opsi JSON mentah (paling fleksibel)
+                no = st.text_area("Opsi (JSON)", q['opsi'])
+                nk = st.text_area("Kunci (JSON)", q['kunci_jawaban'])
+                
+                c_up, c_del = st.columns(2)
+                if c_up.form_submit_button("Update"):
+                    ud = {'pertanyaan':nt, 'opsi':no, 'kunci_jawaban':nk}
                     if ni: ud['gambar'] = process_image(ni)
                     db.collection('questions').document(q['id']).update(ud)
                     st.success("Updated!"); time.sleep(1); st.rerun()
-            if st.button("Hapus Soal"):
-                db.collection('questions').document(q['id']).delete(); st.rerun()
+                if c_del.form_submit_button("Hapus", type="primary"):
+                    db.collection('questions').document(q['id']).delete(); st.rerun()
+        else: st.warning("Kosong.")
 
+    # SISWA
     with t4:
-        st.subheader("Data Siswa")
         users = list(db.collection('users').where('role','!=','admin').stream())
         if users:
-            udata = pd.DataFrame([u.to_dict() for u in users])
-            st.dataframe(udata[['username','nama_lengkap']], hide_index=True)
-            st.caption("Password disembunyikan untuk privasi.")
+            dt = pd.DataFrame([u.to_dict() for u in users])
+            st.dataframe(dt[['username','nama_lengkap']], use_container_width=True)
+            st.caption("Total: " + str(len(users)) + " siswa. Password disembunyikan.")
 
 def student_dashboard():
-    st.markdown(f"<div class='custom-header'><h3>Halo, {st.session_state['nama']}! 👋</h3><button onclick='window.location.href=\"/?logout=true\"' style='background:#ef4444; border:none; color:white; padding:8px 15px; border-radius:5px; cursor:pointer;'>Keluar</button></div>", unsafe_allow_html=True)
+    # Header Cantik
+    st.markdown(f"""
+    <div class='header-bar'>
+        <div>
+            <h2 style='margin:0'>Halo, {st.session_state['nama']}! 👋</h2>
+            <p style='margin:0; opacity:0.9'>Semangat latihan hari ini!</p>
+        </div>
+        <a href='/?logout=true' style='background:rgba(255,255,255,0.3); padding:8px 15px; border-radius:8px; color:white; text-decoration:none; font-weight:bold;'>Keluar</a>
+    </div>
+    """, unsafe_allow_html=True)
+    
     if st.query_params.get("logout"): st.query_params.clear(); st.session_state.clear(); st.rerun()
-    st.subheader("Pilih Ujian")
-    if st.button("📐 Mulai Ujian Matematika (Paket 1)"):
-        if init_exam("Matematika", "Paket 1"): st.rerun()
+    
+    st.subheader("Pilih Mata Pelajaran")
+    
+    # CARD LAYOUT
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("<div class='card-dashboard card-mtk'><h3>📐 Matematika</h3><p>Paket Soal Lengkap</p></div>", unsafe_allow_html=True)
+        if st.button("Mulai Paket 1", key="btn_mtk", use_container_width=True, type="primary"):
+            if init_exam("Matematika", "Paket 1"): st.rerun()
+            
+    with c2:
+        st.markdown("<div class='card-dashboard card-indo'><h3>📖 B. Indonesia</h3><p>Paket Soal Literasi</p></div>", unsafe_allow_html=True)
+        st.button("Belum Tersedia", disabled=True, use_container_width=True)
 
 def exam_interface():
     data = st.session_state['exam_data']; order = st.session_state['q_order']; idx = st.session_state['curr_idx']
+    
+    # Timer Float
     rem = data['end_time'] - datetime.now().timestamp()
     if rem <= 0: finish_exam()
+    st.markdown(f"<div class='timer-float'>⏱️ {int(rem//60)}:{int(rem%60):02d}</div>", unsafe_allow_html=True)
     
-    # Header & Timer
-    c1,c2,c3 = st.columns([6,2,2])
-    with c1: st.markdown(f"**{data['mapel']}** | No. {idx+1}")
-    with c2: st.markdown(f"<div style='background:#dbeafe; color:#1e40af; padding:5px; text-align:center; font-weight:bold; border-radius:5px;'>⏱️ {int(rem//60)}:{int(rem%60):02d}</div>", unsafe_allow_html=True)
-    with c3: 
-        c = st.columns(3)
-        if c[0].button("A-"): st.session_state['font_size']='14px'; st.rerun()
-        if c[1].button("A"): st.session_state['font_size']='18px'; st.rerun()
-        if c[2].button("A+"): st.session_state['font_size']='24px'; st.rerun()
+    # Header Simple
+    c1, c2 = st.columns([3, 1])
+    with c1: st.subheader(f"{data['mapel']}")
+    with c2: 
+        # Font Resizer
+        f = st.columns(3)
+        if f[0].button("A-"): st.session_state['font_size']=14; st.rerun()
+        if f[1].button("A"): st.session_state['font_size']=18; st.rerun()
+        if f[2].button("A+"): st.session_state['font_size']=24; st.rerun()
     
-    col_soal, col_nav = st.columns([3, 1])
+    # --- LAYOUT UTAMA (GRID DI KANAN KALAU LAPTOP, DI BAWAH KALAU HP) ---
+    # Streamlit otomatis menumpuk kolom 2 ke bawah kolom 1 di layar kecil (HP)
+    col_soal, col_grid = st.columns([3, 1])
     
+    # --- KOLOM SOAL ---
     with col_soal:
         qid = order[idx]
         q_doc = db.collection('questions').document(qid).get()
+        
         if q_doc.exists:
             q = q_doc.to_dict()
-            st.markdown(f"<div class='soal-container'>", unsafe_allow_html=True)
-            st.write(q['pertanyaan'])
+            st.markdown(f"<div class='soal-card'><strong>Soal No. {idx+1}</strong><br><br>{q['pertanyaan']}</div>", unsafe_allow_html=True)
             if q.get('gambar'): st.image(q['gambar'])
-            st.write("")
             
+            # Input Jawaban
             opsi = json.loads(q['opsi']); ans = st.session_state['answers'].get(qid)
+            
             if q['tipe'] == 'single':
-                sel = st.radio("Jawab:", opsi, key=qid, index=opsi.index(ans) if ans in opsi else None)
+                sel = st.radio("Pilih:", opsi, key=qid, index=opsi.index(ans) if ans in opsi else None)
                 if sel: st.session_state['answers'][qid] = sel
             elif q['tipe'] == 'complex':
-                st.write("Pilih > 1:"); sel = ans if isinstance(ans, list) else []; new_sel = []
+                st.write("**Pilih Lebih dari Satu:**")
+                sel = ans if isinstance(ans, list) else []; new_sel = []
                 for o in opsi:
                     if st.checkbox(o, o in sel, key=f"{qid}_{o}"): new_sel.append(o)
                 st.session_state['answers'][qid] = new_sel
             elif q['tipe'] == 'category':
-                st.write("Benar/Salah:"); sel = ans if isinstance(ans, dict) else {}; new_sel = {}
+                st.write("**Tentukan Benar/Salah:**")
+                sel = ans if isinstance(ans, dict) else {}; new_sel = {}
                 for o in opsi:
-                    c_a, c_b = st.columns([3,1]); c_a.write(o)
-                    v = c_b.radio(f"opt_{o}", ["Benar","Salah"], key=f"{qid}_{o}", horizontal=True, label_visibility="collapsed", index=0 if sel.get(o)=="Benar" else 1 if sel.get(o)=="Salah" else None)
+                    ca, cb = st.columns([3,1]); ca.write(o)
+                    v = cb.radio(f"bn_{o}", ["Benar","Salah"], key=f"{qid}_{o}", horizontal=True, label_visibility="collapsed", index=0 if sel.get(o)=="Benar" else 1 if sel.get(o)=="Salah" else None)
                     if v: new_sel[o] = v
                 st.session_state['answers'][qid] = new_sel
-            st.markdown("</div>", unsafe_allow_html=True)
 
-    with col_nav:
-        st.write("**Navigasi Soal**")
-        st.markdown("""
-        <div class='legend-box'>
-            <div class='legend-item'><span class='dot' style='background:#1e3a8a;'></span> Sudah</div>
-            <div class='legend-item'><span class='dot' style='background:#facc15;'></span> Ragu</div>
-            <div class='legend-item'><span class='dot' style='background:white; border:1px solid #ccc;'></span> Belum</div>
-        </div>
-        """, unsafe_allow_html=True)
+        # TOMBOL NAVIGASI BAWAH (PREV - NEXT - FINISH)
+        st.markdown("<br>", unsafe_allow_html=True)
+        c_prev, c_ragu, c_next = st.columns([1, 1, 1])
         
-        # GRID YANG SUDAH DIPERBAIKI (MENGGUNAKAN TOMBOL STANDAR DENGAN WARNA)
-        cols = st.columns(5)
-        for i, q_id in enumerate(order):
-            # Tentukan Tipe Tombol
-            btn_type = "secondary"
-            label = str(i+1)
-            
-            # Cek status untuk memberi tanda visual di label
-            if q_id == order[idx]:
-                label = f"🔵 {i+1}" # Sedang dibuka
-            elif q_id in st.session_state['ragu']:
-                label = f"🟡 {i+1}" # Ragu
-            elif q_id in st.session_state['answers'] and st.session_state['answers'][q_id]:
-                label = f"✅ {i+1}" # Sudah dijawab
-            
-            if cols[i%5].button(label, key=f"nav_{i}", use_container_width=True):
-                st.session_state['curr_idx'] = i; save_realtime(); st.rerun()
-
-        st.divider()
+        # Logic Tombol
+        if idx > 0:
+            if c_prev.button("⬅️ Sebelumnya", use_container_width=True):
+                st.session_state['curr_idx'] -= 1; save_realtime(); st.rerun()
+        
         is_r = qid in st.session_state['ragu']
-        if st.button(f"{'🟨 Batal Ragu' if is_r else '🟨 Ragu-Ragu'}", use_container_width=True):
+        if c_ragu.button(f"{'🟨 Batal Ragu' if is_r else '🟨 Ragu'}", use_container_width=True):
             if is_r: st.session_state['ragu'].remove(qid)
             else: st.session_state['ragu'].append(qid)
             save_realtime(); st.rerun()
             
-        c_p, c_n = st.columns(2)
-        if idx > 0 and c_p.button("⬅️ Sblm", use_container_width=True):
-            st.session_state['curr_idx']-=1; save_realtime(); st.rerun()
-        if idx < len(order)-1: 
-            if c_n.button("Lanjut ➡️", use_container_width=True):
-                st.session_state['curr_idx']+=1; save_realtime(); st.rerun()
+        if idx < len(order)-1:
+            if c_next.button("Selanjutnya ➡️", use_container_width=True, type="primary"):
+                st.session_state['curr_idx'] += 1; save_realtime(); st.rerun()
         else:
-            if c_n.button("✅ Selesai", type="primary", use_container_width=True):
+            if c_next.button("✅ Selesai", use_container_width=True, type="primary"):
                 finish_exam()
+
+    # --- KOLOM GRID (OTOMATIS PINDAH KE BAWAH DI HP) ---
+    with col_grid:
+        st.markdown("**Nomor Soal**")
+        
+        # Container grid manual biar rapi
+        cols = st.columns(5)
+        for i, q_id in enumerate(order):
+            label = str(i+1)
+            # Visual Marker di label karena keterbatasan styling button native
+            if i == idx: label = f"🔵 {i+1}"
+            elif q_id in st.session_state['ragu']: label = f"🟡 {i+1}"
+            elif q_id in st.session_state['answers'] and st.session_state['answers'][q_id]: label = f"✅ {i+1}"
+            
+            if cols[i%5].button(label, key=f"nav_{i}", use_container_width=True):
+                st.session_state['curr_idx'] = i; save_realtime(); st.rerun()
+                
+        st.caption("🔵: Aktif | ✅: Dijawab | 🟡: Ragu")
 
 def finish_exam():
     save_realtime()
@@ -427,9 +523,33 @@ def finish_exam():
     st.rerun()
 
 def result_interface():
-    st.balloons(); st.markdown(f"<h1 style='text-align:center;'>Nilai Kamu: {st.session_state['last_score']:.1f}</h1>", unsafe_allow_html=True)
-    if st.button("Kembali"): st.session_state['result_mode']=False; st.rerun()
-    with st.expander("Detail"): st.json(st.session_state['last_det'])
+    st.balloons()
+    st.markdown(f"""
+    <div style='text-align:center; padding:40px; background:white; border-radius:20px; box-shadow:0 10px 25px rgba(0,0,0,0.1); margin-top:50px;'>
+        <h1 style='color:#4F46E5; font-size:3rem; margin:0;'>{st.session_state['last_score']:.1f}</h1>
+        <p style='font-size:1.2rem; color:gray;'>Nilai Akhir Kamu</p>
+        <hr style='margin:20px 0;'>
+        <p>Tetap semangat belajar dan tingkatkan terus prestasimu!</p>
+    </div>
+    <br>
+    """, unsafe_allow_html=True)
+    
+    if st.button("Kembali ke Beranda", use_container_width=True):
+        st.session_state['result_mode']=False; st.rerun()
+        
+    with st.expander("Lihat Pembahasan Jawaban"):
+        for d in st.session_state['last_det']:
+            color = "#dcfce7" if d['benar'] else "#fee2e2"
+            icon = "✅" if d['benar'] else "❌"
+            st.markdown(f"""
+            <div style='background:{color}; padding:15px; border-radius:10px; margin-bottom:10px; color:black; border:1px solid rgba(0,0,0,0.05);'>
+                <strong>{icon} {d['tanya']}</strong><br>
+                <div style='margin-top:5px; font-size:0.9em;'>
+                    Jawabanmu: <b>{d['jawab']}</b> <br>
+                    Kunci: <b>{d['kunci']}</b>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
 # Main Loop
 if not st.session_state.get('logged_in'): login_page()
