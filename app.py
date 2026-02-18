@@ -90,11 +90,11 @@ st.markdown(f"""
         transition: transform 0.2s;
         box-shadow: 0 10px 20px rgba(0,0,0,0.1);
         margin-bottom: 20px;
+        cursor: default;
     }}
     .card-mtk {{ background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }}
     .card-indo {{ background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); }}
-    .card-dashboard:hover {{ transform: translateY(-5px); }}
-
+    
     /* TIMER */
     .timer-float {{
         position: fixed;
@@ -152,25 +152,40 @@ def process_image(uploaded_file):
     return None
 
 def init_exam(mapel, paket):
+    """
+    LOGIKA BARU:
+    1. Cek apakah ada sesi 'ongoing' (belum selesai). Jika ada, LANJUTKAN.
+    2. Jika tidak ada (belum pernah atau sudah selesai/completed), BUAT BARU (RETAKE).
+    """
     session_id = f"{st.session_state['username']}_{mapel}_{paket}"
     doc_ref = db.collection('exam_sessions').document(session_id)
     doc = doc_ref.get()
     
+    start_new = True
+    
     if doc.exists:
         data = doc.to_dict()
-        if data.get('status') == 'completed':
-            st.toast("Kamu sudah menyelesaikan ujian ini. Lihat nilai di menu.", icon="ℹ️")
-            return False
-        st.session_state.update({
-            'exam_data': data, 'q_order': json.loads(data['q_order']),
-            'answers': json.loads(data['answers']), 'ragu': json.loads(data.get('ragu', '[]')),
-            'curr_idx': 0, 'exam_mode': True
-        })
-    else:
+        # Cek apakah masih aktif (ongoing) dan waktu belum habis
+        if data.get('status') == 'ongoing':
+            now = datetime.now().timestamp()
+            if now < data.get('end_time', 0):
+                # LANJUTKAN SESI
+                st.session_state.update({
+                    'exam_data': data, 'q_order': json.loads(data['q_order']),
+                    'answers': json.loads(data['answers']), 'ragu': json.loads(data.get('ragu', '[]')),
+                    'curr_idx': 0, 'exam_mode': True
+                })
+                start_new = False
+                st.toast("Melanjutkan sesi ujian sebelumnya...", icon="🔄")
+    
+    if start_new:
+        # MULAI BARU (RETAKE)
         q_ref = db.collection('questions').where('mapel', '==', mapel).where('paket', '==', paket).stream()
         q_list = [{'id': q.id, **q.to_dict()} for q in q_ref]
         
-        if not q_list: st.error("Soal belum tersedia."); return False
+        if not q_list: 
+            st.error(f"Soal untuk {mapel} - {paket} belum diupload oleh Guru.")
+            return False
         
         random.shuffle(q_list)
         q_order = [q['id'] for q in q_list]
@@ -182,10 +197,14 @@ def init_exam(mapel, paket):
             'q_order': json.dumps(q_order), 'answers': "{}", 'ragu': "[]",
             'status': 'ongoing', 'score': 0
         }
+        # Overwrite sesi lama (jika ada) dengan yang baru
         doc_ref.set(new_data)
+        
         st.session_state.update({
             'exam_data': new_data, 'q_order': q_order, 'answers': {}, 'ragu': [], 'curr_idx': 0, 'exam_mode': True
         })
+        st.toast("Ujian dimulai! Semangat!", icon="🚀")
+        
     return True
 
 def save_realtime():
@@ -397,7 +416,6 @@ def admin_dashboard():
             st.caption("Total: " + str(len(users)) + " siswa. Password disembunyikan.")
 
 def student_dashboard():
-    # Header Cantik
     st.markdown(f"""
     <div class='header-bar'>
         <div>
@@ -441,8 +459,7 @@ def exam_interface():
         if f[1].button("A"): st.session_state['font_size']=18; st.rerun()
         if f[2].button("A+"): st.session_state['font_size']=24; st.rerun()
     
-    # --- LAYOUT UTAMA (GRID DI KANAN KALAU LAPTOP, DI BAWAH KALAU HP) ---
-    # Streamlit otomatis menumpuk kolom 2 ke bawah kolom 1 di layar kecil (HP)
+    # --- LAYOUT UTAMA ---
     col_soal, col_grid = st.columns([3, 1])
     
     # --- KOLOM SOAL ---
@@ -476,17 +493,16 @@ def exam_interface():
                     if v: new_sel[o] = v
                 st.session_state['answers'][qid] = new_sel
 
-        # TOMBOL NAVIGASI BAWAH (PREV - NEXT - FINISH)
+        # TOMBOL NAVIGASI BAWAH
         st.markdown("<br>", unsafe_allow_html=True)
         c_prev, c_ragu, c_next = st.columns([1, 1, 1])
         
-        # Logic Tombol
         if idx > 0:
             if c_prev.button("⬅️ Sebelumnya", use_container_width=True):
                 st.session_state['curr_idx'] -= 1; save_realtime(); st.rerun()
         
         is_r = qid in st.session_state['ragu']
-        if c_ragu.button(f"{'🟨 Batal Ragu' if is_r else '🟨 Ragu'}", use_container_width=True):
+        if c_ragu.button(f"{'🟨 Batal Ragu' if is_r else '🟨 Ragu-Ragu'}", use_container_width=True):
             if is_r: st.session_state['ragu'].remove(qid)
             else: st.session_state['ragu'].append(qid)
             save_realtime(); st.rerun()
@@ -498,15 +514,13 @@ def exam_interface():
             if c_next.button("✅ Selesai", use_container_width=True, type="primary"):
                 finish_exam()
 
-    # --- KOLOM GRID (OTOMATIS PINDAH KE BAWAH DI HP) ---
+    # --- KOLOM GRID ---
     with col_grid:
         st.markdown("**Nomor Soal**")
-        
-        # Container grid manual biar rapi
         cols = st.columns(5)
         for i, q_id in enumerate(order):
             label = str(i+1)
-            # Visual Marker di label karena keterbatasan styling button native
+            # Visual Marker
             if i == idx: label = f"🔵 {i+1}"
             elif q_id in st.session_state['ragu']: label = f"🟡 {i+1}"
             elif q_id in st.session_state['answers'] and st.session_state['answers'][q_id]: label = f"✅ {i+1}"
@@ -529,7 +543,7 @@ def result_interface():
         <h1 style='color:#4F46E5; font-size:3rem; margin:0;'>{st.session_state['last_score']:.1f}</h1>
         <p style='font-size:1.2rem; color:gray;'>Nilai Akhir Kamu</p>
         <hr style='margin:20px 0;'>
-        <p>Tetap semangat belajar dan tingkatkan terus prestasimu!</p>
+        <p>Tetap semangat belajar!</p>
     </div>
     <br>
     """, unsafe_allow_html=True)
