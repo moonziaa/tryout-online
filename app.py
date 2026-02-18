@@ -19,32 +19,25 @@ st.markdown(f"""
 <style>
     [data-testid="stAppViewContainer"] {{ background-color: #f0f3f5; color: #333; }}
     [data-testid="stHeader"] {{ display: none; }}
-    
     .custom-header {{
         background: linear-gradient(90deg, #1e3a8a, #3b82f6);
         padding: 15px 20px; color: white; border-radius: 0 0 15px 15px;
         margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         display: flex; justify-content: space-between; align-items: center;
     }}
-    
     .soal-container {{
-        background: white; padding: 30px; border-radius: 12px;
+        background: white; padding: 40px; border-radius: 12px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         font-size: {st.session_state['font_size']}; line-height: 1.8; min-height: 500px;
     }}
-    
-    /* Grid Nomor */
     .grid-btn {{
         width: 100%; aspect-ratio: 1; border: 1px solid #ccc; border-radius: 4px;
         font-weight: bold; display: flex; align-items: center; justify-content: center;
         margin-bottom: 8px; cursor: pointer; font-size: 14px; background: white;
     }}
-    
-    /* Status Warna */
     .status-done {{ background-color: #1e3a8a !important; color: white !important; border-color: #1e3a8a !important; }}
     .status-ragu {{ background-color: #facc15 !important; color: black !important; border-color: #eab308 !important; }}
     .status-current {{ border: 2px solid #3b82f6 !important; font-weight: 900 !important; transform: scale(1.1); }}
-    
     footer {{ visibility: hidden; }}
     .stDeployButton {{ display: none; }}
 </style>
@@ -64,18 +57,20 @@ def get_db():
 db = get_db()
 if not db: st.error("Gagal koneksi database."); st.stop()
 
-# --- 4. LOGIC SISTEM (ANTI LOGOUT) ---
+# --- 4. LOGIC ANTI-LOGOUT (DITARUH DI ATAS) ---
 def auto_login():
-    """Cek token di URL supaya tidak logout saat refresh"""
-    # Mengambil query params dengan cara terbaru Streamlit
+    """Cek URL token segera saat aplikasi mulai"""
     try:
+        # Ambil parameter dari URL
         qp = st.query_params
         token = qp.get("token", None)
         
+        # Jika belum login tapi ada token di URL
         if token and not st.session_state.get('logged_in'):
             if token == 'admin':
                 st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Guru Admin', 'username':'admin'})
             else:
+                # Cek validitas user di database
                 doc = db.collection('users').document(token).get()
                 if doc.exists:
                     d = doc.to_dict()
@@ -83,6 +78,10 @@ def auto_login():
     except:
         pass
 
+# Jalankan Auto Login SEBELUM halaman dimuat
+auto_login()
+
+# --- 5. FUNGSI LOGIC LAINNYA ---
 def process_image(uploaded_file):
     if uploaded_file:
         bytes_data = uploaded_file.getvalue()
@@ -98,7 +97,7 @@ def init_exam(mapel, paket):
     if doc.exists:
         data = doc.to_dict()
         if data.get('status') == 'completed': 
-            st.warning("Ujian ini sudah selesai dikerjakan."); return False
+            st.warning("Ujian ini sudah selesai."); return False
         st.session_state.update({
             'exam_data': data, 'q_order': json.loads(data['q_order']),
             'answers': json.loads(data['answers']), 'ragu': json.loads(data.get('ragu', '[]')),
@@ -155,10 +154,8 @@ def calculate_score():
         details.append({'tanya': q['pertanyaan'], 'jawab': user_ans, 'kunci': key, 'benar': correct})
         
     final = (score / len(q_ids)) * 100
-    
     sid = f"{st.session_state['username']}_{st.session_state['exam_data']['mapel']}_{st.session_state['exam_data']['paket']}"
     db.collection('exam_sessions').document(sid).update({'status': 'completed', 'score': final})
-    
     db.collection('results').add({
         'username': st.session_state['username'], 'nama': st.session_state['nama'],
         'mapel': st.session_state['exam_data']['mapel'], 'paket': st.session_state['exam_data']['paket'],
@@ -167,7 +164,7 @@ def calculate_score():
     })
     return final, details
 
-# --- 5. HALAMAN ---
+# --- 6. HALAMAN ---
 def login_page():
     st.markdown("<br><br><h1 style='text-align:center; color:#1e3a8a;'>🎓 CAT TKA SD</h1>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,2,1])
@@ -177,7 +174,7 @@ def login_page():
             if st.form_submit_button("Masuk", use_container_width=True):
                 if u=="admin" and p=="admin123":
                     st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Administrator', 'username':'admin'})
-                    st.query_params["token"] = "admin" 
+                    st.query_params["token"] = "admin" # SIMPAN TOKEN DI URL
                     st.rerun()
                 else:
                     users = db.collection('users').where('username','==',u).where('password','==',p).stream()
@@ -185,7 +182,7 @@ def login_page():
                     for user in users:
                         d = user.to_dict()
                         st.session_state.update({'logged_in':True, 'role':'siswa', 'nama':d['nama_lengkap'], 'username':d['username']})
-                        st.query_params["token"] = d['username'] 
+                        st.query_params["token"] = d['username'] # SIMPAN TOKEN DI URL
                         found = True; st.rerun()
                     if not found: st.error("Akun tidak ditemukan")
 
@@ -194,12 +191,11 @@ def admin_dashboard():
     
     # Logic Logout
     if st.query_params.get("logout"): 
-        st.query_params.clear()
-        st.session_state.clear()
-        st.rerun()
+        st.query_params.clear(); st.session_state.clear(); st.rerun()
     
     t1, t2, t3, t4 = st.tabs(["📝 Input Soal", "📂 Upload Teks (HP)", "🛠️ Edit Soal", "👥 Siswa"])
     
+    # --- INPUT MANUAL ---
     with t1:
         st.subheader("Input Soal")
         cm, ct = st.columns(2)
@@ -240,12 +236,15 @@ def admin_dashboard():
                 db.collection('questions').add({'mapel':in_mapel, 'paket':in_paket, 'tipe':rt, 'pertanyaan':tanya, 'gambar':imd, 'opsi':json.dumps(opsi), 'kunci_jawaban':json.dumps(kunci)})
                 st.success("Disimpan!")
 
+    # --- UPLOAD TEKS (HP) ---
     with t2:
-        st.subheader("Paste Teks CSV (Pemisah Titik Koma ';')")
+        st.subheader("Paste Teks CSV (Pemisah Garis Tegak '|')")
+        st.info("Paste teks dari Chatbot di sini. Format baru menggunakan garis tegak (|) agar aman.")
         txt = st.text_area("Paste disini", height=200)
         if st.button("Proses"):
             try:
-                df = pd.read_csv(io.StringIO(txt), sep=';') 
+                # GUNAKAN SEPARATOR PIPA (|)
+                df = pd.read_csv(io.StringIO(txt), sep='|') 
                 cnt = 0
                 for _, r in df.iterrows():
                     olist = [str(r[c]) for c in ['pilihan_a','pilihan_b','pilihan_c','pilihan_d'] if pd.notna(r[c])]
@@ -259,6 +258,7 @@ def admin_dashboard():
                 st.success(f"Masuk {cnt} Soal!")
             except Exception as e: st.error(f"Error: {e}")
 
+    # --- EDIT SOAL ---
     with t3:
         st.subheader("Edit Soal")
         fm = st.selectbox("Mapel", ["Matematika", "Bahasa Indonesia"], key="fm")
@@ -282,6 +282,7 @@ def admin_dashboard():
             if st.button("Hapus Soal"):
                 db.collection('questions').document(q['id']).delete(); st.rerun()
 
+    # --- SISWA ---
     with t4:
         st.subheader("Daftar Siswa")
         users = list(db.collection('users').where('role','!=','admin').stream())
@@ -303,11 +304,8 @@ def admin_dashboard():
 
 def student_dashboard():
     st.markdown(f"<div class='custom-header'><h3>Halo, {st.session_state['nama']}</h3><button onclick='window.location.href=\"/?logout=true\"' style='background:#ef4444; border:none; color:white; padding:8px 15px; border-radius:5px; cursor:pointer;'>Keluar</button></div>", unsafe_allow_html=True)
-    
     if st.query_params.get("logout"): 
-        st.query_params.clear()
-        st.session_state.clear()
-        st.rerun()
+        st.query_params.clear(); st.session_state.clear(); st.rerun()
     
     st.subheader("Pilih Ujian")
     if st.button("📐 Mulai Ujian Matematika (Paket 1)"):
@@ -369,7 +367,6 @@ def exam_interface():
                 if i == idx:
                     border = "#3b82f6"
                 
-                # Grid Button dengan Styling
                 cols[i%5].markdown(f"""
                 <div style="background:{bg}; color:{txt}; border:2px solid {border}; 
                 border-radius:5px; text-align:center; padding:5px; cursor:default; font-weight:bold;">
@@ -377,7 +374,6 @@ def exam_interface():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Invisible button on top for click (Streamlit limitation hack)
                 if cols[i%5].button(f"Go {i+1}", key=f"n{i}", label_visibility="collapsed"):
                     st.session_state['curr_idx'] = i; save_realtime(); st.rerun()
 
@@ -391,8 +387,7 @@ def exam_interface():
         c_p, c_n = st.columns(2)
         if idx > 0 and c_p.button("⬅️ Sblm", use_container_width=True):
             st.session_state['curr_idx']-=1; save_realtime(); st.rerun()
-        
-        if idx < len(order)-1:
+        if idx < len(order)-1: 
             if c_n.button("Lanjut ➡️", use_container_width=True):
                 st.session_state['curr_idx']+=1; save_realtime(); st.rerun()
         else:
@@ -413,8 +408,7 @@ def result_interface():
     with st.expander("Lihat Pembahasan"):
         st.json(st.session_state['last_det'])
 
-# Main Loop
-auto_login() # CEK LOGIN SAAT REFRESH
+# Main Loop (Tanpa pemanggilan auto_login disini karena sudah di atas)
 if not st.session_state.get('logged_in'): login_page()
 else:
     if st.session_state['role'] == 'admin': admin_dashboard()
