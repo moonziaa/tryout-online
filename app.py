@@ -18,102 +18,94 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Font Size Default
+# Init Font
 if 'font_size' not in st.session_state: st.session_state['font_size'] = 18
 
-# --- 2. CSS CUSTOM (TAMPILAN PREMIUM & GRID FIX) ---
+# --- 2. CSS CUSTOM (PREMIUM & CLEAN UI) ---
 st.markdown(f"""
 <style>
     /* VARIABEL WARNA */
     :root {{
         --primary: #4F46E5;
         --secondary: #EC4899;
-        --success: #10B981;
-        --warning: #F59E0B;
-        --bg-light: #F3F4F6;
-        --text-dark: #1F2937;
+        --bg: #F3F4F6;
     }}
-
+    
     /* HILANGKAN HEADER BAWAAN */
     [data-testid="stHeader"] {{ display: none; }}
     footer {{ visibility: hidden; }}
     .stDeployButton {{ display: none; }}
-    
-    /* HEADER CUSTOM */
+
+    /* HEADER GRADASI */
     .header-bar {{
         background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
-        padding: 1.5rem 2rem;
-        border-radius: 0 0 20px 20px;
+        padding: 20px 30px;
         color: white;
-        box-shadow: 0 4px 20px rgba(79, 70, 229, 0.2);
-        margin-bottom: 2rem;
+        border-radius: 0 0 20px 20px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
         display: flex; justify-content: space-between; align-items: center;
     }}
-    
-    /* CARD SOAL */
-    .soal-card {{
+
+    /* KARTU SOAL */
+    .soal-box {{
         background: white;
-        padding: 40px;
-        border-radius: 16px;
-        border: 1px solid #E5E7EB;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        padding: 30px;
+        border-radius: 15px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         font-size: {st.session_state['font_size']}px;
         line-height: 1.8;
-        color: #374151;
-        min-height: 450px;
+        min-height: 300px;
+        margin-bottom: 20px;
     }}
-    
-    /* TOMBOL NAVIGASI BAWAH */
-    .nav-buttons {{
-        display: flex; justify-content: space-between; align-items: center;
-        margin-top: 25px; padding-top: 20px;
-        border-top: 1px solid #F3F4F6;
-    }}
-    
-    /* GRID NOMOR SOAL (FIX) */
-    /* Kita gunakan container Streamlit, styling tombolnya saja */
-    div[data-testid="stHorizontalBlock"] button {{
-        width: 100%;
-        aspect-ratio: 1;
-        padding: 0;
-        font-weight: bold;
-        border-radius: 8px;
-        border: 1px solid #E5E7EB;
-    }}
-    
-    /* STATUS BUTTON GRID */
-    /* Ini trik CSS untuk mewarnai tombol berdasarkan attributenya nanti */
-    
-    /* DASHBOARD CARDS */
-    .stat-card {{
-        background: white; padding: 20px; border-radius: 12px;
-        border: 1px solid #E5E7EB; text-align: center;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }}
-    .stat-value {{ font-size: 24px; font-weight: bold; color: #4F46E5; }}
-    .stat-label {{ font-size: 14px; color: #6B7280; }}
 
-    /* SCORE CIRCLE */
-    .score-circle {{
-        width: 150px; height: 150px;
-        border-radius: 50%;
-        background: conic-gradient(#4F46E5 var(--p), #E5E7EB 0);
-        display: flex; align-items: center; justify-content: center;
-        margin: 0 auto;
+    /* NAVIGASI NOMOR (GRID) */
+    .grid-container {{
+        background: white;
+        padding: 20px;
+        border-radius: 15px;
+        border: 1px solid #e5e7eb;
+        margin-top: 20px;
     }}
-    .score-inner {{
-        width: 130px; height: 130px;
-        background: white; border-radius: 50%;
-        display: flex; flex-direction: column;
-        align-items: center; justify-content: center;
+
+    /* TIMER STICKY */
+    .timer-badge {{
+        background-color: #DBEAFE;
+        color: #1E40AF;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: 800;
+        font-family: monospace;
+        font-size: 1.2rem;
+        border: 1px solid #93C5FD;
+        text-align: center;
+        width: fit-content;
+        margin-left: auto;
+    }}
+
+    /* SCORE CARD (LINGKARAN NILAI) */
+    .score-card {{
+        background: white;
+        padding: 40px;
+        border-radius: 20px;
+        text-align: center;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }}
+    .score-big {{
+        font-size: 4rem;
+        font-weight: 900;
+        color: #4F46E5;
+        margin: 0;
     }}
     
-    /* TIMER BADGE */
-    .timer-badge {{
-        background: #EEF2FF; color: #4F46E5; 
-        padding: 8px 15px; border-radius: 8px; 
-        font-weight: bold; border: 1px solid #C7D2FE;
+    /* ANALISIS BOX */
+    .analysis-box {{
+        padding: 15px; border-radius: 10px; margin-bottom: 10px;
     }}
+    .box-good {{ background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }}
+    .box-bad {{ background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }}
 
 </style>
 """, unsafe_allow_html=True)
@@ -130,7 +122,7 @@ def get_db():
     except: return None
 
 db = get_db()
-if not db: st.error("Koneksi Database Gagal. Cek Secrets!"); st.stop()
+if not db: st.error("Database Error. Cek Secrets."); st.stop()
 
 # --- 4. LOGIC ---
 def auto_login():
@@ -173,14 +165,13 @@ def init_exam(mapel, paket):
                     'curr_idx': 0, 'exam_mode': True
                 })
                 start_new = False
-                st.toast("Melanjutkan sesi ujian...", icon="🔄")
+                st.toast("Melanjutkan sesi...", icon="🔄")
     
     if start_new:
         q_ref = db.collection('questions').where('mapel', '==', mapel).where('paket', '==', paket).stream()
         q_list = [{'id': q.id, **q.to_dict()} for q in q_ref]
         
-        if not q_list: 
-            st.error(f"Soal untuk {mapel} - {paket} belum tersedia."); return False
+        if not q_list: st.error("Soal tidak ditemukan."); return False
         
         random.shuffle(q_list)
         q_order = [q['id'] for q in q_list]
@@ -209,7 +200,7 @@ def calculate_score():
     q_ids = st.session_state['q_order']
     ans = st.session_state['answers']
     score = 0
-    topic_stats = {} # Analisis Topik
+    topic_stats = {} # {topik: {correct:0, total:0}}
     details = []
     
     for qid in q_ids:
@@ -220,7 +211,6 @@ def calculate_score():
         try: key = json.loads(q['kunci_jawaban'])
         except: key = q['kunci_jawaban']
         
-        # Penilaian
         is_correct = False
         if q['tipe'] == 'single' and user_ans == key: is_correct = True
         elif q['tipe'] == 'complex' and user_ans and set(user_ans) == set(key): is_correct = True
@@ -228,7 +218,7 @@ def calculate_score():
         
         if is_correct: score += 1
         
-        # Analisis Topik (PENTING BUAT GRAFIK)
+        # Analisis Topik
         topik = q.get('topik', 'Umum')
         if topik not in topic_stats: topic_stats[topik] = {'correct':0, 'total':0}
         topic_stats[topik]['total'] += 1
@@ -294,33 +284,32 @@ def admin_dashboard():
     t1, t2, t3, t4, t5 = st.tabs(["📊 Statistik", "📝 Input Soal", "📂 Upload Teks", "🛠️ Edit Soal", "👥 Siswa"])
     
     with t1:
-        st.subheader("Analisis Hasil Ujian")
+        st.subheader("Statistik Kelas")
         results = list(db.collection('results').stream())
         if results:
             df = pd.DataFrame([r.to_dict() for r in results])
             c1, c2, c3, c4 = st.columns(4)
-            c1.markdown(f"<div class='stat-card'><div class='stat-value'>{len(df)}</div><div class='stat-label'>Total Ujian</div></div>", unsafe_allow_html=True)
-            c2.markdown(f"<div class='stat-card'><div class='stat-value'>{df['skor'].mean():.1f}</div><div class='stat-label'>Rata-rata Nilai</div></div>", unsafe_allow_html=True)
-            c3.markdown(f"<div class='stat-card'><div class='stat-value'>{df['skor'].max():.1f}</div><div class='stat-label'>Nilai Tertinggi</div></div>", unsafe_allow_html=True)
-            c4.markdown(f"<div class='stat-card'><div class='stat-value'>{len(df['username'].unique())}</div><div class='stat-label'>Siswa Aktif</div></div>", unsafe_allow_html=True)
+            c1.metric("Total Ujian", len(df))
+            c2.metric("Rata-Rata", f"{df['skor'].mean():.1f}")
+            c3.metric("Tertinggi", f"{df['skor'].max():.1f}")
+            c4.metric("Siswa Aktif", len(df['username'].unique()))
             
             st.divider()
             c_a, c_b = st.columns([2,1])
             with c_a:
                 st.write("##### Sebaran Nilai")
-                chart = alt.Chart(df).mark_bar().encode(
-                    x=alt.X('skor', bin=True), y='count()', color='mapel'
-                ).interactive()
-                st.altair_chart(chart, use_container_width=True)
+                ch = alt.Chart(df).mark_bar().encode(x=alt.X('skor', bin=True), y='count()', color='mapel').interactive()
+                st.altair_chart(ch, use_container_width=True)
             with c_b:
                 st.write("##### Top 10 Siswa")
                 st.dataframe(df[['nama','skor']].sort_values('skor',ascending=False).head(10), hide_index=True)
         else: st.info("Belum ada data.")
 
     with t2:
-        c1, c2 = st.columns(2)
-        in_mapel = c1.selectbox("Mapel", ["Matematika", "Bahasa Indonesia"])
-        in_tipe = c2.selectbox("Tipe", ["Pilihan Ganda (PG)", "PG Kompleks", "Benar/Salah"])
+        st.subheader("Input Soal")
+        cm, ct = st.columns(2)
+        in_mapel = cm.selectbox("Mapel", ["Matematika", "Bahasa Indonesia"])
+        in_tipe = ct.selectbox("Tipe", ["Pilihan Ganda (PG)", "PG Kompleks", "Benar/Salah"])
         in_paket = st.text_input("Paket", "Paket 1")
         in_topik = st.text_input("Topik", "Umum", help="Contoh: Geometri, Bilangan")
         
@@ -348,10 +337,8 @@ def admin_dashboard():
                 rt='category'
             if st.form_submit_button("Simpan"):
                 imd = process_image(img)
-                db.collection('questions').add({
-                    'mapel':in_mapel, 'paket':in_paket, 'tipe':rt, 'topik':in_topik,
-                    'pertanyaan':tanya, 'gambar':imd, 'opsi':json.dumps(opsi), 'kunci_jawaban':json.dumps(kunci)
-                })
+                db.collection('questions').add({'mapel':in_mapel, 'paket':in_paket, 'tipe':rt, 'topik':in_topik,
+                    'pertanyaan':tanya, 'gambar':imd, 'opsi':json.dumps(opsi), 'kunci_jawaban':json.dumps(kunci)})
                 st.success("Tersimpan!")
 
     with t3:
@@ -374,7 +361,7 @@ def admin_dashboard():
         qs=list(db.collection('questions').where('mapel','==',fm).where('paket','==',fp).stream())
         if qs:
             qdat=[{'id':q.id, **q.to_dict()} for q in qs]
-            sel=st.selectbox("Pilih", range(len(qdat)), format_func=lambda x: qdat[x]['pertanyaan'][:60])
+            sel=st.selectbox("Pilih Soal", range(len(qdat)), format_func=lambda x: qdat[x]['pertanyaan'][:80])
             q=qdat[sel]
             with st.form("eds"):
                 nt=st.text_area("Tanya", q['pertanyaan'])
@@ -422,12 +409,11 @@ def student_dashboard():
         if hist:
             for h in hist:
                 with st.expander(f"{h['tanggal']} | {h['mapel']} | Skor: {h['skor']:.1f}"):
-                    # Analisis Topik Simple
                     if 'topic_analysis' in h:
                         stats = json.loads(h['topic_analysis'])
                         st.write("**Analisis Topik:**")
                         for k, v in stats.items():
-                            st.progress(v['correct']/v['total'], text=f"{k}: {v['correct']}/{v['total']} Benar")
+                            st.progress(v['correct']/v['total'] if v['total']>0 else 0, text=f"{k}: {v['correct']}/{v['total']} Benar")
         else: st.info("Belum ada riwayat.")
 
 def exam_interface():
@@ -435,9 +421,9 @@ def exam_interface():
     rem = data['end_time'] - datetime.now().timestamp()
     if rem <= 0: finish_exam()
     
-    # HEADER UJIAN
-    c1,c2,c3 = st.columns([6,3,3])
-    with c1: st.markdown(f"**{data['mapel']}** | No. {idx+1}")
+    # 1. HEADER TIMER & FONT
+    c1,c2,c3 = st.columns([6,2,2])
+    with c1: st.markdown(f"**{data['mapel']}** | No. {idx+1} dari {len(order)}")
     with c2: st.markdown(f"<div class='timer-badge'>⏱️ {int(rem//60)}:{int(rem%60):02d}</div>", unsafe_allow_html=True)
     with c3: 
         f = st.columns(3)
@@ -445,16 +431,17 @@ def exam_interface():
         if f[1].button("A"): st.session_state['font_size']=18; st.rerun()
         if f[2].button("A+"): st.session_state['font_size']=24; st.rerun()
     
-    # LAYOUT RESPONSIVE (Grid Pindah ke Bawah di Mobile otomatis oleh Streamlit)
+    # LAYOUT RESPONSIVE
+    # Di HP akan otomatis menumpuk: Kolom Soal dulu, baru Kolom Grid di bawahnya
     col_soal, col_nav = st.columns([3, 1])
     
-    # --- AREA SOAL ---
+    # --- KOLOM 1: SOAL ---
     with col_soal:
         qid = order[idx]
         q_doc = db.collection('questions').document(qid).get()
         if q_doc.exists:
             q = q_doc.to_dict()
-            st.markdown(f"<div class='soal-card'>", unsafe_allow_html=True)
+            st.markdown(f"<div class='soal-box'>", unsafe_allow_html=True)
             st.write(q['pertanyaan'])
             if q.get('gambar'): st.image(q['gambar'])
             st.markdown("<hr>", unsafe_allow_html=True)
@@ -481,17 +468,14 @@ def exam_interface():
                 st.session_state['answers'][qid] = new_sel
             st.markdown("</div>", unsafe_allow_html=True)
         
-        # NAVIGASI BAWAH
-        st.markdown("<br>", unsafe_allow_html=True)
+        # NAVIGASI BAWAH SOAL
+        st.markdown("<div class='nav-buttons'>", unsafe_allow_html=True)
         c_prev, c_ragu, c_next = st.columns([1,1,1])
         
-        # Tombol Navigasi Cerdas
         if idx > 0:
             if c_prev.button("⬅️ Sebelumnya", use_container_width=True):
                 st.session_state['curr_idx'] -= 1; save_realtime(); st.rerun()
-        else:
-            c_prev.write("") # Spacer
-            
+        
         is_r = qid in st.session_state['ragu']
         if c_ragu.button(f"{'🟨 Batal Ragu' if is_r else '🟨 Ragu'}", use_container_width=True):
             if is_r: st.session_state['ragu'].remove(qid)
@@ -504,33 +488,28 @@ def exam_interface():
         else:
             if c_next.button("✅ Selesai", type="primary", use_container_width=True):
                 finish_exam()
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- GRID NOMOR (KANAN/BAWAH) ---
+    # --- KOLOM 2: GRID NOMOR RAPI ---
     with col_nav:
-        st.write("**Navigasi Soal**")
+        st.markdown("**Navigasi Soal**")
         st.markdown("<div class='grid-container'>", unsafe_allow_html=True)
         
-        # Grid 5 Kolom
+        # Loop 5 kolom
         total_q = len(order)
-        for i in range(0, total_q, 5):
+        rows = (total_q + 4) // 5
+        for r in range(rows):
             cols = st.columns(5)
-            for j in range(5):
-                q_idx = i + j
+            for c in range(5):
+                q_idx = r * 5 + c
                 if q_idx < total_q:
-                    q_real = order[q_idx]
+                    qid_real = order[q_idx]
                     label = str(q_idx+1)
+                    if q_idx == idx: label = f"🔵" # Aktif
+                    elif qid_real in st.session_state['ragu']: label = f"🟨" # Ragu
+                    elif qid_real in st.session_state['answers'] and st.session_state['answers'][qid_real]: label = f"✅" # Done
                     
-                    # Logika Warna Tombol
-                    type_btn = "secondary"
-                    if q_idx == idx: 
-                        label = f"🔵 {q_idx+1}" # Aktif
-                        type_btn = "primary"
-                    elif q_real in st.session_state['ragu']:
-                        label = f"🟨 {q_idx+1}" # Ragu
-                    elif q_real in st.session_state['answers'] and st.session_state['answers'][q_real]:
-                        label = f"✅ {q_idx+1}" # Sudah dijawab
-                    
-                    if cols[j].button(label, key=f"g_{q_idx}", help=f"No {q_idx+1}"):
+                    if cols[c].button(label, key=f"g_{q_idx}", help=f"No {q_idx+1}"):
                         st.session_state['curr_idx'] = q_idx; save_realtime(); st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
         st.caption("🔵: Aktif | ✅: Dijawab | 🟨: Ragu")
@@ -546,27 +525,23 @@ def result_interface():
     score = st.session_state['last_score']
     stats = st.session_state.get('last_stats', {})
     
-    # CARD NILAI LINGKARAN (CSS GRADIENT)
+    # CARD NILAI LINGKARAN
     st.markdown(f"""
-    <div style='text-align:center; padding:30px; background:white; border-radius:15px; box-shadow:0 5px 15px rgba(0,0,0,0.1);'>
-        <div class='score-circle' style='--p: {score*3.6}deg'>
-            <div class='score-inner'>
-                <h1 style='color:#2563eb; margin:0; font-size:2.5rem;'>{score:.0f}</h1>
-                <small>Skor Akhir</small>
-            </div>
-        </div>
+    <div class='score-card'>
+        <p style='color:gray'>Nilai Akhir Kamu</p>
+        <div class='score-big'>{score:.1f}</div>
     </div>
     <br>
     """, unsafe_allow_html=True)
     
-    # ANALISIS MATERI
+    # ANALISIS
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("✅ Materi Kuat")
         found=False
         for k,v in stats.items():
             if v['total']>0 and (v['correct']/v['total']) >= 0.7:
-                st.markdown(f"<div class='topic-badge bg-green'>{k} ({v['correct']}/{v['total']} Benar)</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='analysis-box box-good'><b>{k}</b> ({v['correct']}/{v['total']} Benar)</div>", unsafe_allow_html=True)
                 found=True
         if not found: st.write("-")
     
@@ -575,12 +550,26 @@ def result_interface():
         found=False
         for k,v in stats.items():
             if v['total']>0 and (v['correct']/v['total']) < 0.7:
-                st.markdown(f"<div class='topic-badge bg-red'>{k} ({v['correct']}/{v['total']} Benar)</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='analysis-box box-bad'><b>{k}</b> ({v['correct']}/{v['total']} Benar)</div>", unsafe_allow_html=True)
                 found=True
         if not found: st.write("Kerja bagus! Pertahankan.")
 
     if st.button("Kembali ke Beranda", use_container_width=True):
         st.session_state['result_mode']=False; st.rerun()
+        
+    with st.expander("Lihat Pembahasan Lengkap"):
+        for d in st.session_state['last_det']:
+            bg = "#dcfce7" if d['benar'] else "#fee2e2"
+            icon = "✅" if d['benar'] else "❌"
+            st.markdown(f"""
+            <div style='background:{bg}; padding:15px; border-radius:10px; margin-bottom:10px; color:black;'>
+                <small>{d.get('topik','Umum')}</small><br>
+                <strong>{icon} {d['tanya']}</strong><br>
+                <div style='margin-top:5px; font-size:0.9em; color:#333;'>
+                    Jawabanmu: <b>{d['jawab']}</b> | Kunci: <b>{d['kunci']}</b>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
 # Main Loop
 if not st.session_state.get('logged_in'): login_page()
