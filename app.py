@@ -57,31 +57,23 @@ def get_db():
 db = get_db()
 if not db: st.error("Gagal koneksi database."); st.stop()
 
-# --- 4. LOGIC ANTI-LOGOUT (DITARUH DI ATAS) ---
+# --- 4. LOGIC SISTEM ---
 def auto_login():
-    """Cek URL token segera saat aplikasi mulai"""
     try:
-        # Ambil parameter dari URL
         qp = st.query_params
         token = qp.get("token", None)
-        
-        # Jika belum login tapi ada token di URL
         if token and not st.session_state.get('logged_in'):
             if token == 'admin':
                 st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Guru Admin', 'username':'admin'})
             else:
-                # Cek validitas user di database
                 doc = db.collection('users').document(token).get()
                 if doc.exists:
                     d = doc.to_dict()
                     st.session_state.update({'logged_in':True, 'role':'siswa', 'nama':d['nama_lengkap'], 'username':d['username']})
-    except:
-        pass
+    except: pass
 
-# Jalankan Auto Login SEBELUM halaman dimuat
 auto_login()
 
-# --- 5. FUNGSI LOGIC LAINNYA ---
 def process_image(uploaded_file):
     if uploaded_file:
         bytes_data = uploaded_file.getvalue()
@@ -106,13 +98,10 @@ def init_exam(mapel, paket):
     else:
         q_ref = db.collection('questions').where('mapel', '==', mapel).where('paket', '==', paket).stream()
         q_list = [{'id': q.id, **q.to_dict()} for q in q_ref]
-        
         if not q_list: st.error("Soal kosong."); return False
-            
         random.shuffle(q_list)
         q_order = [q['id'] for q in q_list]
         start_ts = datetime.now().timestamp()
-        
         new_data = {
             'username': st.session_state['username'], 'mapel': mapel, 'paket': paket,
             'start_time': start_ts, 'end_time': start_ts + (75*60),
@@ -164,7 +153,7 @@ def calculate_score():
     })
     return final, details
 
-# --- 6. HALAMAN ---
+# --- 5. HALAMAN ---
 def login_page():
     st.markdown("<br><br><h1 style='text-align:center; color:#1e3a8a;'>🎓 CAT TKA SD</h1>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,2,1])
@@ -174,7 +163,7 @@ def login_page():
             if st.form_submit_button("Masuk", use_container_width=True):
                 if u=="admin" and p=="admin123":
                     st.session_state.update({'logged_in':True, 'role':'admin', 'nama':'Administrator', 'username':'admin'})
-                    st.query_params["token"] = "admin" # SIMPAN TOKEN DI URL
+                    st.query_params["token"] = "admin" 
                     st.rerun()
                 else:
                     users = db.collection('users').where('username','==',u).where('password','==',p).stream()
@@ -182,20 +171,16 @@ def login_page():
                     for user in users:
                         d = user.to_dict()
                         st.session_state.update({'logged_in':True, 'role':'siswa', 'nama':d['nama_lengkap'], 'username':d['username']})
-                        st.query_params["token"] = d['username'] # SIMPAN TOKEN DI URL
+                        st.query_params["token"] = d['username']
                         found = True; st.rerun()
                     if not found: st.error("Akun tidak ditemukan")
 
 def admin_dashboard():
     st.markdown("<div class='custom-header'><h3>Dashboard Admin</h3><button onclick='window.location.href=\"/?logout=true\"' style='background:none;border:1px solid white;color:white;padding:5px 10px;border-radius:5px;cursor:pointer;'>Keluar</button></div>", unsafe_allow_html=True)
-    
-    # Logic Logout
-    if st.query_params.get("logout"): 
-        st.query_params.clear(); st.session_state.clear(); st.rerun()
+    if st.query_params.get("logout"): st.query_params.clear(); st.session_state.clear(); st.rerun()
     
     t1, t2, t3, t4 = st.tabs(["📝 Input Soal", "📂 Upload Teks (HP)", "🛠️ Edit Soal", "👥 Siswa"])
     
-    # --- INPUT MANUAL ---
     with t1:
         st.subheader("Input Soal")
         cm, ct = st.columns(2)
@@ -208,7 +193,6 @@ def admin_dashboard():
             img = st.file_uploader("Gambar", type=['png','jpg'])
             opsi = []; kunci = None
             st.markdown("---")
-            
             if in_tipe == "Pilihan Ganda (PG)":
                 cols = st.columns(4)
                 opsi = [cols[i].text_input(f"Opsi {chr(65+i)}") for i in range(4)]
@@ -236,15 +220,12 @@ def admin_dashboard():
                 db.collection('questions').add({'mapel':in_mapel, 'paket':in_paket, 'tipe':rt, 'pertanyaan':tanya, 'gambar':imd, 'opsi':json.dumps(opsi), 'kunci_jawaban':json.dumps(kunci)})
                 st.success("Disimpan!")
 
-    # --- UPLOAD TEKS (HP) ---
     with t2:
         st.subheader("Paste Teks CSV (Pemisah Garis Tegak '|')")
-        st.info("Paste teks dari Chatbot di sini. Format baru menggunakan garis tegak (|) agar aman.")
         txt = st.text_area("Paste disini", height=200)
         if st.button("Proses"):
             try:
-                # GUNAKAN SEPARATOR PIPA (|)
-                df = pd.read_csv(io.StringIO(txt), sep='|') 
+                df = pd.read_csv(io.StringIO(txt), sep='|')
                 cnt = 0
                 for _, r in df.iterrows():
                     olist = [str(r[c]) for c in ['pilihan_a','pilihan_b','pilihan_c','pilihan_d'] if pd.notna(r[c])]
@@ -258,38 +239,122 @@ def admin_dashboard():
                 st.success(f"Masuk {cnt} Soal!")
             except Exception as e: st.error(f"Error: {e}")
 
-    # --- EDIT SOAL ---
+    # --- EDIT SOAL (YANG IBU MINTA DIROMBAK) ---
     with t3:
-        st.subheader("Edit Soal")
-        fm = st.selectbox("Mapel", ["Matematika", "Bahasa Indonesia"], key="fm")
-        fp = st.text_input("Paket", "Paket 1", key="fp")
-        qref = list(db.collection('questions').where('mapel','==',fm).where('paket','==',fp).stream())
+        st.subheader("Edit / Hapus Soal")
+        f_mapel = st.selectbox("Filter Mapel", ["Matematika", "Bahasa Indonesia"], key="fm_ed")
+        f_paket = st.text_input("Filter Paket", "Paket 1", key="fp_ed")
         
-        if qref:
-            qs = [{'id':q.id, **q.to_dict()} for q in qref]
-            sel = st.selectbox("Pilih Soal", range(len(qs)), format_func=lambda x: qs[x]['pertanyaan'][:60])
-            q = qs[sel]
+        q_ref = list(db.collection('questions').where('mapel','==',f_mapel).where('paket','==',f_paket).stream())
+        
+        if q_ref:
+            q_list = [{'id': q.id, **q.to_dict()} for q in q_ref]
+            q_titles = [f"{q['pertanyaan'][:60]}..." for q in q_list]
+            sel_idx = st.selectbox("Pilih Soal", range(len(q_list)), format_func=lambda x: q_titles[x])
+            q = q_list[sel_idx]
             
-            with st.form("ed"):
-                nt = st.text_area("Tanya", q['pertanyaan'])
-                if q.get('gambar'): st.image(q['gambar'], width=200)
-                ni = st.file_uploader("Ganti Gambar")
-                if st.form_submit_button("Update"):
-                    ud = {'pertanyaan':nt}
-                    if ni: ud['gambar'] = process_image(ni)
-                    db.collection('questions').document(q['id']).update(ud)
-                    st.success("Updated!"); time.sleep(1); st.rerun()
-            if st.button("Hapus Soal"):
-                db.collection('questions').document(q['id']).delete(); st.rerun()
+            # PARSING DATA LAMA AGAR MUNCUL DI FORM
+            try:
+                old_opsi = json.loads(q['opsi'])
+                old_kunci = json.loads(q['kunci_jawaban'])
+            except:
+                old_opsi = []; old_kunci = None
 
-    # --- SISWA ---
+            st.markdown("---")
+            with st.form("edit_form_real"):
+                st.info(f"Mengedit Soal ID: {q['id']}")
+                ed_tanya = st.text_area("Pertanyaan", q['pertanyaan'])
+                
+                # GAMBAR
+                if q.get('gambar'): 
+                    st.image(q['gambar'], width=200, caption="Gambar Lama")
+                    st.caption("Jika ingin ganti gambar, upload di bawah. Jika tidak, biarkan kosong.")
+                ed_img = st.file_uploader("Upload Gambar Baru (Opsional)", type=['png','jpg'])
+
+                # FORM EDIT SESUAI TIPE SOAL
+                new_opsi = []; new_kunci = None
+                
+                if q['tipe'] == 'single':
+                    st.write("**Edit Pilihan Ganda**")
+                    cols = st.columns(4)
+                    # Pastikan list opsi cukup 4
+                    while len(old_opsi) < 4: old_opsi.append("")
+                    
+                    # Cari index kunci jawaban lama
+                    try: k_idx = old_opsi.index(old_kunci)
+                    except: k_idx = 0
+                    
+                    temp_opsi = []
+                    for i in range(4):
+                        val = cols[i].text_input(f"Opsi {chr(65+i)}", value=old_opsi[i])
+                        temp_opsi.append(val)
+                    
+                    ans_idx = st.radio("Kunci Jawaban Baru", ["A","B","C","D"], index=k_idx, horizontal=True)
+                    new_opsi = temp_opsi
+                    new_kunci = temp_opsi[ord(ans_idx)-65]
+                    
+                elif q['tipe'] == 'complex':
+                    st.write("**Edit Pilihan Ganda Kompleks (Checkbox)**")
+                    cols = st.columns(2)
+                    temp_kunci = []
+                    # Pastikan list opsi cukup 4
+                    while len(old_opsi) < 4: old_opsi.append("")
+                    
+                    for i in range(4):
+                        val = cols[i%2].text_input(f"Pilihan {i+1}", value=old_opsi[i])
+                        if val: new_opsi.append(val)
+                        # Cek apakah opsi ini ada di kunci lama
+                        is_checked = val in old_kunci if isinstance(old_kunci, list) else False
+                        if cols[i%2].checkbox(f"Benar?", value=is_checked, key=f"ed_c{i}"):
+                            temp_kunci.append(val)
+                    new_kunci = temp_kunci
+                    
+                elif q['tipe'] == 'category':
+                    st.write("**Edit Benar/Salah**")
+                    new_kunci = {}
+                    # Old kunci bentuknya Dict: {"Pernyataan": "Benar/Salah"}
+                    # Kita ubah jadi list biar gampang di loop
+                    old_items = list(old_kunci.items()) if isinstance(old_kunci, dict) else []
+                    while len(old_items) < 3: old_items.append(("", "Benar"))
+                    
+                    for i in range(3):
+                        c1, c2 = st.columns([3,1])
+                        p_val = old_items[i][0] if i < len(old_items) else ""
+                        k_val = old_items[i][1] if i < len(old_items) else "Benar"
+                        
+                        p = c1.text_input(f"Pernyataan {i+1}", value=p_val)
+                        k = c2.radio(f"Kunci", ["Benar","Salah"], index=0 if k_val=="Benar" else 1, horizontal=True, key=f"ed_bs{i}", label_visibility="collapsed")
+                        
+                        if p: 
+                            new_opsi.append(p)
+                            new_kunci[p] = k
+
+                # TOMBOL SIMPAN
+                c_up, c_del = st.columns(2)
+                if c_up.form_submit_button("💾 Simpan Perubahan"):
+                    update_data = {
+                        'pertanyaan': ed_tanya,
+                        'opsi': json.dumps(new_opsi),
+                        'kunci_jawaban': json.dumps(new_kunci)
+                    }
+                    if ed_img: 
+                        update_data['gambar'] = process_image(ed_img)
+                    
+                    db.collection('questions').document(q['id']).update(update_data)
+                    st.success("Soal berhasil diperbarui!"); time.sleep(1); st.rerun()
+                
+                if c_del.form_submit_button("🗑️ Hapus Soal", type="primary"):
+                    db.collection('questions').document(q['id']).delete()
+                    st.warning("Soal dihapus permanen."); time.sleep(1); st.rerun()
+        else:
+            st.info("Belum ada soal di paket ini.")
+
     with t4:
         st.subheader("Daftar Siswa")
         users = list(db.collection('users').where('role','!=','admin').stream())
         if users:
             udata = pd.DataFrame([u.to_dict() for u in users])
             st.dataframe(udata[['username','nama_lengkap','password']])
-            
             st.write("### Edit Siswa")
             su = st.selectbox("Pilih Username", udata['username'])
             with st.form("eu"):
@@ -304,9 +369,7 @@ def admin_dashboard():
 
 def student_dashboard():
     st.markdown(f"<div class='custom-header'><h3>Halo, {st.session_state['nama']}</h3><button onclick='window.location.href=\"/?logout=true\"' style='background:#ef4444; border:none; color:white; padding:8px 15px; border-radius:5px; cursor:pointer;'>Keluar</button></div>", unsafe_allow_html=True)
-    if st.query_params.get("logout"): 
-        st.query_params.clear(); st.session_state.clear(); st.rerun()
-    
+    if st.query_params.get("logout"): st.query_params.clear(); st.session_state.clear(); st.rerun()
     st.subheader("Pilih Ujian")
     if st.button("📐 Mulai Ujian Matematika (Paket 1)"):
         if init_exam("Matematika", "Paket 1"): st.rerun()
@@ -315,7 +378,6 @@ def exam_interface():
     data = st.session_state['exam_data']; order = st.session_state['q_order']; idx = st.session_state['curr_idx']
     rem = data['end_time'] - datetime.now().timestamp()
     if rem <= 0: finish_exam()
-    
     c1,c2,c3 = st.columns([6,2,2])
     with c1: st.markdown(f"**{data['mapel']}** | No. {idx+1}")
     with c2: st.markdown(f"<div style='background:#dbeafe; color:#1e40af; padding:5px; text-align:center;'>⏱️ {int(rem//60)}:{int(rem%60):02d}</div>", unsafe_allow_html=True)
@@ -326,7 +388,6 @@ def exam_interface():
         if c[2].button("A+"): st.session_state['font_size']='24px'; st.rerun()
     
     col_soal, col_nav = st.columns([3, 1])
-    
     with col_soal:
         qid = order[idx]
         q_doc = db.collection('questions').document(qid).get()
@@ -336,7 +397,6 @@ def exam_interface():
             st.write(q['pertanyaan'])
             if q.get('gambar'): st.image(q['gambar'])
             st.write("")
-            
             opsi = json.loads(q['opsi']); ans = st.session_state['answers'].get(qid)
             if q['tipe'] == 'single':
                 sel = st.radio("Jawab:", opsi, key=qid, index=opsi.index(ans) if ans in opsi else None)
@@ -366,14 +426,7 @@ def exam_interface():
                     bg = "#facc15"; txt = "black"
                 if i == idx:
                     border = "#3b82f6"
-                
-                cols[i%5].markdown(f"""
-                <div style="background:{bg}; color:{txt}; border:2px solid {border}; 
-                border-radius:5px; text-align:center; padding:5px; cursor:default; font-weight:bold;">
-                {i+1}
-                </div>
-                """, unsafe_allow_html=True)
-                
+                cols[i%5].markdown(f"""<div style="background:{bg}; color:{txt}; border:2px solid {border}; border-radius:5px; text-align:center; padding:5px; cursor:default; font-weight:bold;">{i+1}</div>""", unsafe_allow_html=True)
                 if cols[i%5].button(f"Go {i+1}", key=f"n{i}", label_visibility="collapsed"):
                     st.session_state['curr_idx'] = i; save_realtime(); st.rerun()
 
@@ -383,7 +436,6 @@ def exam_interface():
             if is_r: st.session_state['ragu'].remove(qid)
             else: st.session_state['ragu'].append(qid)
             save_realtime(); st.rerun()
-            
         c_p, c_n = st.columns(2)
         if idx > 0 and c_p.button("⬅️ Sblm", use_container_width=True):
             st.session_state['curr_idx']-=1; save_realtime(); st.rerun()
@@ -401,14 +453,12 @@ def finish_exam():
     st.rerun()
 
 def result_interface():
-    st.balloons()
-    st.markdown(f"<h1 style='text-align:center;'>Nilai Kamu: {st.session_state['last_score']:.1f}</h1>", unsafe_allow_html=True)
-    if st.button("Kembali ke Menu Utama"):
-        st.session_state['result_mode']=False; st.rerun()
-    with st.expander("Lihat Pembahasan"):
-        st.json(st.session_state['last_det'])
+    st.balloons(); st.markdown(f"<h1 style='text-align:center;'>Nilai Kamu: {st.session_state['last_score']:.1f}</h1>", unsafe_allow_html=True)
+    if st.button("Kembali"): st.session_state['result_mode']=False; st.rerun()
+    with st.expander("Detail"): st.json(st.session_state['last_det'])
 
-# Main Loop (Tanpa pemanggilan auto_login disini karena sudah di atas)
+# Main Loop
+auto_login()
 if not st.session_state.get('logged_in'): login_page()
 else:
     if st.session_state['role'] == 'admin': admin_dashboard()
